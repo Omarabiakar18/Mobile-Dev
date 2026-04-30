@@ -1,0 +1,217 @@
+// Garage — Prisma schema
+// See GARAGE_PROJECT_SPEC.md §4 for the data model design.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------------------------------------------------
+
+enum FuelType {
+  gasoline
+  diesel
+}
+
+enum MaintenanceType {
+  oil
+  brakes
+  tires
+  filter
+  battery
+  other
+}
+
+enum DocumentType {
+  insurance
+  mecanique
+  registration
+  other
+}
+
+// ---------- Users / Auth ---------------------------------------------
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  cars          Car[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ---------- Cars -----------------------------------------------------
+
+model Car {
+  id          String  @id @default(uuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  make        String
+  model       String
+  year        Int
+  plate       String
+  color       String?
+  currentKm   Int      @default(0)
+  fuelType    FuelType
+  tankSize    Decimal  @db.Decimal(6, 2) // liters
+  photoUrl    String?
+  /// Cached avg km/day from last 60d of fuel entries. Null if not enough data.
+  avgKmPerDay Decimal? @db.Decimal(8, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  fuelEntries FuelEntry[]
+  maintenance MaintenanceEntry[]
+  documents   Document[]
+  reminders   ServiceReminder[]
+
+  @@index([userId])
+  @@map("cars")
+}
+
+// ---------- Fuel -----------------------------------------------------
+
+model FuelEntry {
+  id              String   @id @default(uuid())
+  carId           String
+  car             Car      @relation(fields: [carId], references: [id], onDelete: Cascade)
+  date            DateTime
+  odometer        Int
+  liters          Decimal  @db.Decimal(8, 3)
+  pricePerLiter   Decimal  @db.Decimal(10, 4)
+  totalCost       Decimal  @db.Decimal(18, 4)
+  fuelType        FuelType
+  station         String?
+  isFullTank      Boolean  @default(false)
+  receiptPhotoUrl String?
+  latitude        Float?
+  longitude       Float?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([carId, date])
+  @@map("fuel_entries")
+}
+
+// ---------- Maintenance ---------------------------------------------
+
+model MaintenanceEntry {
+  id          String          @id @default(uuid())
+  carId       String
+  car         Car             @relation(fields: [carId], references: [id], onDelete: Cascade)
+  date        DateTime
+  km          Int
+  type        MaintenanceType
+  description String?
+  cost        Decimal         @db.Decimal(18, 4)
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  photos MaintenancePhoto[]
+
+  @@index([carId, date])
+  @@map("maintenance_entries")
+}
+
+model MaintenancePhoto {
+  id                 String           @id @default(uuid())
+  maintenanceEntryId String
+  maintenanceEntry   MaintenanceEntry @relation(fields: [maintenanceEntryId], references: [id], onDelete: Cascade)
+  url                String
+  createdAt          DateTime         @default(now())
+
+  @@index([maintenanceEntryId])
+  @@map("maintenance_photos")
+}
+
+// ---------- Documents -----------------------------------------------
+
+model Document {
+  id         String       @id @default(uuid())
+  carId      String
+  car        Car          @relation(fields: [carId], references: [id], onDelete: Cascade)
+  type       DocumentType
+  issuedDate DateTime?
+  expiryDate DateTime
+  fileUrl    String
+  issuer     String?
+  notes      String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([carId, expiryDate])
+  @@map("documents")
+}
+
+// ---------- Service reminders ---------------------------------------
+
+model ServiceReminder {
+  id             String    @id @default(uuid())
+  carId          String
+  car            Car       @relation(fields: [carId], references: [id], onDelete: Cascade)
+  serviceType    String
+  lastDoneKm     Int
+  lastDoneDate   DateTime
+  intervalKm     Int?
+  intervalMonths Int?
+  isActive       Boolean   @default(true)
+  lastNotifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([carId, isActive])
+  @@map("service_reminders")
+}
+
+// ---------- Gas stations (seeded) -----------------------------------
+
+model GasStation {
+  id        String   @id @default(uuid())
+  name      String
+  latitude  Float
+  longitude Float
+  city      String
+  createdAt DateTime @default(now())
+
+  @@index([latitude, longitude])
+  @@map("gas_stations")
+}
+
+// ---------- OCR cache -----------------------------------------------
+
+model OcrCache {
+  id         String   @id @default(uuid())
+  imageHash  String   @unique
+  fields     Json
+  confidence Json
+  rawText    String   @db.Text
+  provider   String
+  createdAt  DateTime @default(now())
+
+  @@map("ocr_cache")
+}
