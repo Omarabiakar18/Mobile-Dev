@@ -1,11 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import pinoHttp from 'pino-http';
+import rateLimit from 'express-rate-limit';
 
 import { env } from './config/env';
 import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
 import { errorHandler, notFoundHandler } from './middleware/error';
+
+import { authRouter } from './modules/auth/auth.routes';
+import { usersRouter } from './modules/users/users.routes';
+import { carsRouter } from './modules/cars/cars.routes';
 
 async function main() {
   const app = express();
@@ -20,9 +25,19 @@ async function main() {
     res.json({ data: { status: 'ok', uptime: process.uptime() } });
   });
 
-  // TODO(phase 1): mount auth routes
-  // TODO(phase 1): mount users routes
-  // TODO(phase 1): mount cars routes
+  // Rate-limit auth endpoints (login bruteforce / register spam)
+  const authLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 10,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skip: (req) => req.path === '/me' || req.path === '/refresh',
+  });
+
+  app.use('/auth', authLimiter, authRouter);
+  app.use('/users', usersRouter);
+  app.use('/cars', carsRouter);
+
   // TODO(phase 2): mount fuel, maintenance, documents, reminders routes
   // TODO(phase 4): mount ocr routes
   // TODO(phase 5): mount gas-stations routes
