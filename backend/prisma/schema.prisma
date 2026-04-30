@@ -181,8 +181,13 @@ model ServiceReminder {
   intervalMonths Int?
   isActive       Boolean   @default(true)
   lastNotifiedAt DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+
+  /// LLM-generated friendly reminder message — see spec §16-B. Cached per (reminder, predictedDate).
+  aiMessage            String?
+  aiMessageGeneratedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([carId, isActive])
   @@map("service_reminders")

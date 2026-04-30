@@ -24,18 +24,17 @@ A Flutter + Node.js app for car owners that tracks fuel, maintenance, and docume
 
 **Out of scope — will not be built:**
 
-- AI maintenance advisor chatbot
-- Weekly AI insights feed
+- AI maintenance advisor chatbot (the standalone chat screen)
+- Weekly AI insights feed (the auto-generated narrative card on the dashboard)
 - Mechanics directory + reviews
 - Bilingual EN/AR + RTL layout
 - OBD-II / ELM327 scaffolding (data model, stubs, "Coming Soon" tile)
 - Forgot-password / email flow
 - FCM / remote push (replaced by local notifications)
-- LLM provider abstraction (no LLM features)
 - LBP currency / parallel-rate handling (USD only)
 - Charts / graphs in fuel stats (numeric stats only)
 
-> "Smart" features (predictive fill-up, service reminders) are **pure math/algorithms**, not LLMs. OCR uses Google Cloud Vision (managed ML service). No LLM is part of v1.
+> **LLM enhancements ARE in scope** as graceful enhancements *inside* the existing 5 features — not as new screens. See §16. Predictive fill-up math and service reminder math are still pure deterministic algorithms; the LLM only adds explanations and prettier phrasing on top.
 
 ---
 
@@ -54,6 +53,7 @@ A Flutter + Node.js app for car owners that tracks fuel, maintenance, and docume
 - **Scheduled jobs:** `node-cron` (nightly recompute of `avgKmPerDay` per car)
 - **Rate limiting:** `express-rate-limit` on `/fuel/ocr` (10/day/user) and `/auth/login` (10/min/IP)
 - **Logging:** `pino` with `pino-http`
+- **LLM:** Google Gemini (`@google/generative-ai`) behind a small `services/llm.ts` interface for swap-ability. Default model: `gemini-1.5-flash` (free tier, fast, low cost). See §16.
 - **Containerization:** Docker + docker-compose (postgres + backend + minio)
 
 ### Frontend (Flutter)
@@ -64,7 +64,7 @@ A Flutter + Node.js app for car owners that tracks fuel, maintenance, and docume
 - **Token storage:** `flutter_secure_storage`, with first-launch stale-token clear
 - **Photos:** `image_picker` → `flutter_image_compress` (max 1200px, ~80% JPEG) → multipart upload via `dio`
 - **Caching:** `cached_network_image` for remote photos
-- **Local persistence:** `hive` for caching the current car's profile (so the app opens to data even on slow networks)
+- **Local persistence:** `sqflite` (SQLite on-device). Tables mirror API responses for cars, fuel entries, maintenance, documents, reminders, gas stations. Read on app launch → app opens to last-known data even on slow networks. Write on every successful API response.
 - **Navigation:** `go_router` (declarative, type-safe params, deep-link support for cold-start notification taps)
 - **Notifications:** `flutter_local_notifications` (scheduling, permission flow, deep-linked payloads)
 - **Geofencing:** `geofence_service` (CLVisit + CLCircularRegion under the hood on iOS)
@@ -73,6 +73,7 @@ A Flutter + Node.js app for car owners that tracks fuel, maintenance, and docume
 
 ### Third-party services
 - **OCR:** Google Cloud Vision API (free tier covers v1 volume; ~1000 calls/month free)
+- **LLM:** Google Gemini API (free tier covers v1 volume; 1M tokens/day, 15 req/min)
 - **Hosting (optional, demo evidence):** Neon free tier for Postgres, Render or Railway free tier for backend. Free.
 
 ---
@@ -111,7 +112,9 @@ Document
 
 ServiceReminder
   id, carId (FK), serviceType, lastDoneKm, lastDoneDate, intervalKm?,
-  intervalMonths?, isActive (bool), lastNotifiedAt?, createdAt, updatedAt
+  intervalMonths?, isActive (bool), lastNotifiedAt?,
+  aiMessage?, aiMessageGeneratedAt?,           // §16-B cache
+  createdAt, updatedAt
 
 GasStation
   id, name, latitude, longitude, city, createdAt
@@ -263,18 +266,13 @@ Same pattern. On launch and after mutations, fetch `/cars/:carId/documents/expir
 1. Receive multipart upload, save to `./uploads/ocr/<hash>.jpg` (sha256 of bytes)
 2. **Cache check:** if `<hash>` already in `OcrCache`, return cached result
 3. Preprocess with `sharp`: greyscale → contrast (~+30%) → deskew → upscale if low DPI
-4. Send to Google Cloud Vision (`textDetection`)
-5. Field extraction via regex on the raw OCR text:
-   - `total`: `\b(\d{1,3}(?:[.,]\d{2})?)\s*(?:USD|\$)\b` or last decimal in receipt
-   - `liters`: `\b(\d{1,3}[.,]\d{1,3})\s*L\b`
-   - `pricePerLiter`: `\b(\d{1,3}[.,]\d{1,3})\s*\$?/L\b`
-   - `date`: `\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b`
-   - `station`: first non-numeric line that looks like a name
-6. Compute confidence per field (regex match strength + Vision API confidence)
-7. Return `{ fields: { liters, pricePerLiter, totalCost, station, date }, confidence: { liters, pricePerLiter, ... }, rawText }`
-8. Insert into `OcrCache`
+4. Send to Google Cloud Vision (`textDetection`) → returns raw OCR text
+5. **LLM-parse stage** (see §16-A): pass `rawText` to `LlmService.extractFuelFields()` with a strict-JSON prompt that returns `{ liters, pricePerLiter, totalCost, station, date, confidence }`. The LLM handles mixed-script Lebanese receipts far better than regex.
+6. **Regex fallback:** if the LLM call fails or the response isn't valid JSON, fall back to regex extraction (`\b(\d{1,3}[.,]\d{1,3})\s*L\b`, etc.) so the feature still works.
+7. Return `{ fields, confidence, rawText, parsedBy: "llm" | "regex" | "demo" }`.
+8. Insert into `OcrCache` (so the LLM call doesn't repeat for the same photo).
 
-**Demo-mode fallback:** if `DEMO_MODE=true`, the OCR endpoint skips Vision API entirely and returns hardcoded plausible fields. Flip on for the live demo.
+**Demo-mode fallback:** if `DEMO_MODE=true`, the OCR endpoint skips Vision API and LLM entirely and returns hardcoded plausible fields with `parsedBy: "demo"`. Flip on for the live demo.
 
 ---
 
@@ -446,7 +444,8 @@ Final_Project/
 │   │   │   ├── gas-stations/
 │   │   │   └── ocr/
 │   │   ├── services/
-│   │   │   └── ocr.ts                  ← Vision API wrapper + sharp preprocess
+│   │   │   ├── ocr.ts                  ← Vision API wrapper + sharp preprocess
+│   │   │   └── llm.ts                  ← Gemini wrapper + prompt templates
 │   │   ├── lib/                        ← shared helpers (jwt, money, dates)
 │   │   └── jobs/                       ← node-cron schedules
 │   └── uploads/                        ← gitignored
@@ -468,3 +467,127 @@ Final_Project/
 │           ├── geofence/
 │           └── home/
 ```
+
+---
+
+## 16. LLM enhancements
+
+LLMs are added as **graceful enhancements inside the existing 5 features**, not as new screens. Three touchpoints (A, B, C). Every one has a non-LLM fallback so the demo is safe even if the LLM provider is down.
+
+**Provider:** Google Gemini (`@google/generative-ai`), default model `gemini-1.5-flash`. Free tier covers v1 (1M tokens/day, 15 req/min). Behind a `services/llm.ts` interface so it's swappable to OpenAI/Claude with one env var if needed.
+
+**Env vars:**
+```
+LLM_PROVIDER=gemini             # gemini | openai | anthropic (only gemini implemented)
+GEMINI_API_KEY=...
+LLM_MODEL=gemini-1.5-flash
+LLM_TIMEOUT_MS=8000             # hard timeout per call
+```
+
+**Backend interface (`src/services/llm.ts`):**
+```ts
+export interface LlmProvider {
+  name: string;
+  /** Strict-JSON completion. Returns parsed JSON or throws if model didn't comply. */
+  json<T>(prompt: string, schema: z.ZodType<T>, options?: LlmOptions): Promise<T>;
+  /** Free-text completion. Returns string. */
+  text(prompt: string, options?: LlmOptions): Promise<string>;
+}
+
+export interface LlmOptions {
+  temperature?: number;   // default 0.2
+  maxTokens?: number;     // default 300
+  systemPrompt?: string;
+}
+```
+
+The service applies a hard timeout (`LLM_TIMEOUT_MS`), retries once on transient failures, validates JSON output against a Zod schema before returning, and logs token usage for observability.
+
+---
+
+### A. LLM-parsed receipts (replaces regex stage in §7)
+
+**Where:** `services/ocr.ts` calls `services/llm.ts` after Vision API returns raw text.
+
+**Prompt template:**
+```
+You are extracting fields from a gas station receipt. Return ONLY valid JSON
+matching this exact shape — no commentary, no markdown:
+{ "liters": number|null, "pricePerLiter": number|null, "totalCost": number|null,
+  "station": string|null, "date": "YYYY-MM-DD"|null, "confidence": number }
+
+Currency is USD. If a field is unclear or absent, use null. `confidence` is your
+own 0.0–1.0 estimate of how sure you are about the overall extraction.
+
+Receipt text:
+"""
+{rawText}
+"""
+```
+
+**Validation:** response goes through a Zod schema. On any parse failure → fall through to regex extraction (unchanged from earlier draft of the spec).
+
+**Cost per call:** ~300 input + ~80 output tokens ≈ free tier comfortable.
+
+---
+
+### B. AI-phrased service reminders
+
+**Where:** `GET /cars/:carId/reminders/due` enriches each due-soon reminder with an `aiMessage` string.
+
+**Strategy:** the deterministic math (§6.2) computes `predictedDate`, `kmRemaining`, `daysRemaining`. The LLM gets these numbers + the car make/model/year + service type and writes one sentence.
+
+**Prompt template:**
+```
+You write friendly, factual one-sentence service reminders for a car owner. Use
+ONLY the numbers provided — do not invent any. Do not give specific repair cost
+estimates. Aim for ~20 words. Conversational but practical.
+
+Car: {year} {make} {model}, currently at {currentKm} km.
+Service: {serviceType}.
+Last done: {lastDoneKm} km on {lastDoneDate}.
+Predicted next: {predictedDate} ({daysRemaining} days from today).
+Driving pace: {avgKmPerDay} km/day.
+```
+
+**Cache:** the `aiMessage` is computed at most once per (reminder, predictedDate) pair and cached on the `ServiceReminder` row in a new `aiMessage` column + `aiMessageGeneratedAt` timestamp. Recomputed only when `predictedDate` shifts.
+
+**Fallback:** if the LLM call fails, the response uses a template string: `"{serviceType} due in {daysRemaining} days (~{predictedDate})"`.
+
+---
+
+### C. "Explain this prediction" modal
+
+**Where:** new endpoint `GET /cars/:carId/fuel/predict-next/explain` (only called when the user taps the predict card on the home dashboard — not on every page load).
+
+**Prompt template:**
+```
+You are explaining a deterministic fuel prediction to the owner of the car.
+Use ONLY the numbers provided. Walk through the math in plain English in 2–3
+short sentences. Do not invent numbers. Do not give advice.
+
+Car: {year} {make} {model}, tank size {tankSize} L, currently at {currentKm} km.
+Average consumption (from {n} full-tank pairs): {consumptionPer100km} L/100km.
+Last full tank: {lastFullTankDate} at {lastFullTankOdo} km.
+Driving pace ({avgKmPerDayWindow}): {avgKmPerDay} km/day.
+Estimated tank remaining: {tankRemainingLiters} L → {daysRemaining} days → {predictedDate}.
+```
+
+**Fallback:** if the LLM call fails, return a hardcoded template that interpolates the same numbers.
+
+---
+
+### Demo-mode behavior
+
+When `DEMO_MODE=true`:
+- A — receipt parser returns hardcoded fields (already covered in §7)
+- B — reminder `aiMessage` is filled by template, never calls Gemini
+- C — explainer endpoint returns a hardcoded paragraph
+
+This guarantees the live demo can run without any internet connectivity to Google.
+
+---
+
+### Cost & rate limiting
+
+All three touchpoints together at demo volumes (~10 LLM calls per day): well inside the Gemini free tier. `express-rate-limit` middleware caps `/fuel/ocr` at 10/day/user (already in spec §3) and `/fuel/predict-next/explain` at 30/day/user as a runaway-cost guard.

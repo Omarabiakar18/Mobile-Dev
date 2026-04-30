@@ -55,6 +55,10 @@ services:
       REFRESH_TOKEN_TTL_DAYS: 7
       DEMO_MODE: "false"
       UPLOADS_DIR: /app/uploads
+      LLM_PROVIDER: gemini
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_MODEL: gemini-1.5-flash
+      LLM_TIMEOUT_MS: 8000
     ports:
       - "3000:3000"
     volumes:

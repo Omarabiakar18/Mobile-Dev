@@ -50,3 +50,6 @@ mobile/android/app/release/
 # Demo / scratch
 *.demo.json
 .scratch/
+
+# Claude Code artifacts
+.claude/

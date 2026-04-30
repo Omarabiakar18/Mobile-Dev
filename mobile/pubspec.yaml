@@ -28,9 +28,9 @@ dependencies:
   flutter_image_compress: ^2.3.0
   cached_network_image: ^3.4.1
 
-  # Local persistence (cache)
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
+  # Local persistence (cache) — SQLite via sqflite
+  sqflite: ^2.4.1
+  path: ^1.9.0
   path_provider: ^2.1.5
 
   # Notifications + permissions + geofencing
@@ -48,8 +48,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  build_runner: ^2.4.13
-  hive_generator: ^2.0.1
 
 flutter:
   uses-material-design: true

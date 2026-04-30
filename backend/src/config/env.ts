@@ -15,6 +15,12 @@ const envSchema = z.object({
   UPLOADS_DIR: z.string().default('./uploads'),
 
   GOOGLE_APPLICATION_CREDENTIALS: z.string().optional().default(''),
+
+  LLM_PROVIDER: z.enum(['gemini', 'openai', 'anthropic']).default('gemini'),
+  GEMINI_API_KEY: z.string().optional().default(''),
+  LLM_MODEL: z.string().default('gemini-1.5-flash'),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+
   DEMO_MODE: z
     .string()
     .default('false')
