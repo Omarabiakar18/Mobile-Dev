@@ -9,7 +9,14 @@ import 'features/auth/presentation/register_screen.dart';
 import 'features/cars/presentation/add_car_screen.dart';
 import 'features/cars/presentation/car_detail_screen.dart';
 import 'features/cars/presentation/cars_list_screen.dart';
+import 'features/documents/presentation/add_document_screen.dart';
+import 'features/documents/presentation/documents_list_screen.dart';
+import 'features/fuel/presentation/add_fuel_screen.dart';
 import 'features/home/splash_screen.dart';
+import 'features/maintenance/presentation/add_maintenance_screen.dart';
+import 'features/maintenance/presentation/maintenance_list_screen.dart';
+import 'features/reminders/presentation/add_reminder_screen.dart';
+import 'features/reminders/presentation/reminders_list_screen.dart';
 
 class GarageApp extends ConsumerWidget {
   const GarageApp({super.key});
@@ -58,6 +65,48 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/cars/:id',
         builder: (_, state) => CarDetailScreen(carId: state.pathParameters['id']!),
+      ),
+
+      // Phase 2 — fuel
+      GoRoute(
+        path: '/cars/:id/fuel/new',
+        builder: (_, state) => AddFuelScreen(carId: state.pathParameters['id']!),
+      ),
+
+      // Phase 2 — maintenance
+      GoRoute(
+        path: '/cars/:id/maintenance',
+        builder: (_, state) =>
+            MaintenanceListScreen(carId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/cars/:id/maintenance/new',
+        builder: (_, state) =>
+            AddMaintenanceScreen(carId: state.pathParameters['id']!),
+      ),
+
+      // Phase 2 — documents
+      GoRoute(
+        path: '/cars/:id/documents',
+        builder: (_, state) =>
+            DocumentsListScreen(carId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/cars/:id/documents/new',
+        builder: (_, state) =>
+            AddDocumentScreen(carId: state.pathParameters['id']!),
+      ),
+
+      // Phase 2 — reminders
+      GoRoute(
+        path: '/cars/:id/reminders',
+        builder: (_, state) =>
+            RemindersListScreen(carId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/cars/:id/reminders/new',
+        builder: (_, state) =>
+            AddReminderScreen(carId: state.pathParameters['id']!),
       ),
     ],
   );

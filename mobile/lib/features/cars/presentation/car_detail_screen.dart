@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../documents/presentation/documents_list_screen.dart';
+import '../../fuel/presentation/fuel_list_screen.dart';
+import '../../maintenance/presentation/maintenance_list_screen.dart';
+import '../../reminders/presentation/reminders_list_screen.dart';
 import '../data/cars_api.dart';
 import '../data/car_model.dart';
 
@@ -46,10 +50,10 @@ class CarDetailScreen extends ConsumerWidget {
             return TabBarView(
               children: [
                 _OverviewTab(car: car),
-                const _ComingSoonTab('Fuel log lands in Phase 2'),
-                const _ComingSoonTab('Maintenance log lands in Phase 2'),
-                const _ComingSoonTab('Documents land in Phase 2'),
-                const _ComingSoonTab('Service reminders land in Phase 3'),
+                FuelListScreen(carId: car.id),
+                MaintenanceListScreen(carId: car.id),
+                DocumentsListScreen(carId: car.id),
+                RemindersListScreen(carId: car.id),
               ],
             );
           },
@@ -123,21 +127,3 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _ComingSoonTab extends StatelessWidget {
-  const _ComingSoonTab(this.message);
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Text(
-          message,
-          style: Theme.of(context).textTheme.bodyMedium,
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
