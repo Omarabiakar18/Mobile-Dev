@@ -234,7 +234,19 @@ export function computePredictNext(
     .filter((e) => e.isFullTank)
     .sort((a, b) => a.odometer - b.odometer);
 
-  if (fullTanks.length < 3) {
+  // Bootstrap on valid pairs, not raw full-tank count. Three full tanks with a
+  // duplicate odometer reading produce only one usable pair, and the algorithm
+  // averages across pairs — so require ≥2 valid pairs to match the spec's
+  // intent (smoother consumption signal).
+  const validPairs: { liters: number; kmLeg: number }[] = [];
+  for (let i = 1; i < fullTanks.length; i++) {
+    const kmLeg = fullTanks[i].odometer - fullTanks[i - 1].odometer;
+    if (kmLeg > 0) {
+      validPairs.push({ liters: toNumber(fullTanks[i].liters), kmLeg });
+    }
+  }
+
+  if (validPairs.length < 2) {
     return {
       confidence: 'insufficient_data',
       tankRemainingLiters: null,
@@ -253,30 +265,11 @@ export function computePredictNext(
     };
   }
 
-  // Avg L/100km across every consecutive (full-tank, full-tank) pair. The
-  // liters on entry[i] are what filled the tank back to full, which is an
-  // approximation of what was consumed over the (odo[i-1] → odo[i]) leg.
-  let consumptionTotal = 0;
-  let pairs = 0;
-  for (let i = 1; i < fullTanks.length; i++) {
-    const prev = fullTanks[i - 1];
-    const curr = fullTanks[i];
-    const kmLeg = curr.odometer - prev.odometer;
-    if (kmLeg <= 0) continue;
-    consumptionTotal += (toNumber(curr.liters) / kmLeg) * 100;
-    pairs += 1;
-  }
-  // pairs is at least fullTanks.length - 1 ≥ 2 unless we drop pairs for
-  // non-positive km (duplicate odometer reads). Defensive guard:
-  if (pairs === 0) {
-    return {
-      confidence: 'data_inconsistent',
-      tankRemainingLiters: null,
-      daysRemaining: null,
-      predictedDate: null,
-    };
-  }
-  const consumptionPer100km = consumptionTotal / pairs;
+  // Avg L/100km across every valid (full-tank, full-tank) pair. The liters on
+  // entry[i] are what filled the tank back to full, which approximates what
+  // was consumed over the (odo[i-1] → odo[i]) leg.
+  const consumptionPer100km =
+    validPairs.reduce((acc, p) => acc + (p.liters / p.kmLeg) * 100, 0) / validPairs.length;
 
   const kmSinceLastFull = car.currentKm - lastFullTank.odometer;
   const litersUsed = (kmSinceLastFull * consumptionPer100km) / 100;

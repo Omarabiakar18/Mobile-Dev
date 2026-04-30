@@ -153,10 +153,14 @@ export async function expiring(userId: string, carId: string, withinDays: number
   await assertOwnsCar(userId, carId);
   const now = new Date();
   const cutoff = new Date(now.getTime() + withinDays * DAY_MS);
+  // Bound the lower edge so a doc that expired years ago doesn't sit in the
+  // "expiring soon" banner forever. We still surface recently-expired ones
+  // (last 14 days) so the user can see what they just missed.
+  const floor = new Date(now.getTime() - 14 * DAY_MS);
   return prisma.document.findMany({
     where: {
       carId,
-      expiryDate: { lte: cutoff },
+      expiryDate: { lte: cutoff, gte: floor },
     },
     orderBy: { expiryDate: 'asc' },
   });

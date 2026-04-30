@@ -504,7 +504,10 @@ class _OkCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final liters = prediction.tankRemainingLiters ?? 0;
     final litersStr = '${liters.toStringAsFixed(1)} L';
-    final days = prediction.daysRemaining;
+    // Server returns fractional days (e.g. 10.6); round at render time so the
+    // display reads "10 days" while the underlying value preserves precision.
+    final daysExact = prediction.daysRemaining;
+    final days = daysExact?.round();
 
     final hasDate = days != null;
     final daysColor = !hasDate

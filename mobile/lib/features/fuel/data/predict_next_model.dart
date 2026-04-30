@@ -60,7 +60,8 @@ class FuelPrediction {
 
   final PredictConfidence confidence;
   final double? tankRemainingLiters;
-  final int? daysRemaining;
+  /// Fractional days, e.g. 7.5. Round at render time, not in the parser.
+  final double? daysRemaining;
   final DateTime? predictedDate;
   final double? consumptionPer100km;
   final int? kmSinceLastFull;
@@ -72,7 +73,7 @@ class FuelPrediction {
             : _parseDecimal(j['tankRemainingLiters']),
         daysRemaining: j['daysRemaining'] == null
             ? null
-            : (j['daysRemaining'] as num).toInt(),
+            : _parseDecimal(j['daysRemaining']),
         predictedDate: j['predictedDate'] == null
             ? null
             : DateTime.parse(j['predictedDate'] as String),

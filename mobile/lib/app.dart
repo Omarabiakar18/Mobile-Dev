@@ -123,13 +123,16 @@ final routerProvider = Provider<GoRouter>((ref) {
 });
 
 /// Bridges Riverpod's `authProvider` changes to GoRouter's `refreshListenable`
-/// so the redirect re-evaluates on every auth state change.
+/// so the redirect re-evaluates on every auth state change. `fireImmediately`
+/// is true so a synchronously-completed bootstrap (e.g. cold launch with no
+/// stored token) immediately moves the redirect off /splash on the first
+/// frame instead of sticking until the next state change.
 class _AuthRefresh extends ChangeNotifier {
   _AuthRefresh(this._ref) {
     _sub = _ref.listen<AsyncValue<dynamic>>(
       authProvider,
       (_, _) => notifyListeners(),
-      fireImmediately: false,
+      fireImmediately: true,
     );
   }
   final Ref _ref;

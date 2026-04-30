@@ -2,7 +2,6 @@ import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
 import pinoHttp from 'pino-http';
-import rateLimit from 'express-rate-limit';
 
 import { env } from './config/env';
 import { logger } from './lib/logger';
@@ -37,16 +36,8 @@ async function main() {
     res.json({ data: { status: 'ok', uptime: process.uptime() } });
   });
 
-  // Rate-limit auth endpoints (login bruteforce / register spam)
-  const authLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 10,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    skip: (req) => req.path === '/me' || req.path === '/refresh',
-  });
-
-  app.use('/auth', authLimiter, authRouter);
+  // Auth routes carry their own per-route rate limiters (see auth.routes.ts).
+  app.use('/auth', authRouter);
   app.use('/users', usersRouter);
   app.use('/cars', carsRouter);
 

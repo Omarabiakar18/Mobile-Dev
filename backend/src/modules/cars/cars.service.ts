@@ -2,6 +2,7 @@ import type { Car } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma';
 import { ForbiddenError, NotFoundError } from '../../lib/errors';
+import { recomputeAvgKmPerDay } from '../../lib/avg-km-per-day';
 import type { CreateCarInput, UpdateCarInput } from './cars.schemas';
 
 /**
@@ -45,10 +46,19 @@ export function create(userId: string, input: CreateCarInput) {
 
 export async function update(userId: string, carId: string, input: UpdateCarInput) {
   await assertOwnsCar(userId, carId);
-  return prisma.car.update({
-    where: { id: carId },
-    data: input,
-  });
+
+  // If currentKm changed we must recompute avgKmPerDay because predict-next
+  // and reminder projection both read it from the cached column. Wrap in a
+  // transaction so the cached value never lags the source of truth.
+  if (input.currentKm !== undefined) {
+    return prisma.$transaction(async (tx) => {
+      const car = await tx.car.update({ where: { id: carId }, data: input });
+      await recomputeAvgKmPerDay(carId, tx);
+      return tx.car.findUnique({ where: { id: car.id } }) as Promise<Car>;
+    });
+  }
+
+  return prisma.car.update({ where: { id: carId }, data: input });
 }
 
 export async function remove(userId: string, carId: string) {

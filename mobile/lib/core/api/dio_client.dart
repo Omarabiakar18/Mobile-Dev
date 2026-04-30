@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,8 +8,9 @@ import 'base_url.dart';
 
 /// Dio instance with:
 ///   1. Bearer token attached on every request
-///   2. On 401: try the refresh endpoint once, retry the failed request
-///   3. On second 401: bubble up — caller (auth notifier) should sign the user out
+///   2. On 401: single-flight refresh that any concurrent caller can await
+///   3. After refresh, the original request retries once with the new token
+///   4. If refresh itself fails (or returns null), force-signs the user out
 class DioClient {
   DioClient(this._tokens) {
     dio = Dio(
@@ -34,7 +37,12 @@ class DioClient {
 class _AuthInterceptor extends Interceptor {
   _AuthInterceptor(this._client);
   final DioClient _client;
-  bool _refreshing = false;
+
+  /// Single-flight refresh: when one request triggers a refresh, every other
+  /// concurrent 401 awaits this same future and reuses the resulting access
+  /// token. Without this, parallel home-screen requests race and all but the
+  /// first see `_refreshing=true`, return null, and force a sign-out.
+  Future<String?>? _refreshInFlight;
 
   @override
   Future<void> onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
@@ -48,19 +56,29 @@ class _AuthInterceptor extends Interceptor {
   @override
   Future<void> onResponse(Response response, ResponseInterceptorHandler handler) async {
     if (response.statusCode == 401 && response.requestOptions.path != '/auth/refresh') {
-      final retried = await _tryRefreshAndRetry(response.requestOptions);
-      if (retried != null) {
-        handler.resolve(retried);
-        return;
+      final newAccess = await _refreshOnce();
+      if (newAccess != null) {
+        final retried = await _retryWithToken(response.requestOptions, newAccess);
+        if (retried != null) {
+          handler.resolve(retried);
+          return;
+        }
       }
       _client.onAuthFailure?.call();
     }
     handler.next(response);
   }
 
-  Future<Response?> _tryRefreshAndRetry(RequestOptions original) async {
-    if (_refreshing) return null;
-    _refreshing = true;
+  /// Returns a fresh access token (caller is expected to retry with it),
+  /// or null if refresh failed (caller should treat as hard auth failure).
+  /// Concurrent callers share the same in-flight request.
+  Future<String?> _refreshOnce() {
+    return _refreshInFlight ??= _doRefresh().whenComplete(() {
+      _refreshInFlight = null;
+    });
+  }
+
+  Future<String?> _doRefresh() async {
     try {
       final refresh = await _client.tokens.readRefresh();
       if (refresh == null) return null;
@@ -78,11 +96,17 @@ class _AuthInterceptor extends Interceptor {
       if (access == null || newRefresh == null) return null;
 
       await _client.tokens.saveTokens(access: access, refresh: newRefresh);
+      return access;
+    } catch (_) {
+      return null;
+    }
+  }
 
-      // Retry the original request with the new token
+  Future<Response?> _retryWithToken(RequestOptions original, String accessToken) async {
+    try {
       final retryOptions = Options(
         method: original.method,
-        headers: {...original.headers, 'Authorization': 'Bearer $access'},
+        headers: {...original.headers, 'Authorization': 'Bearer $accessToken'},
         contentType: original.contentType,
         responseType: original.responseType,
       );
@@ -94,8 +118,6 @@ class _AuthInterceptor extends Interceptor {
       );
     } catch (_) {
       return null;
-    } finally {
-      _refreshing = false;
     }
   }
 }

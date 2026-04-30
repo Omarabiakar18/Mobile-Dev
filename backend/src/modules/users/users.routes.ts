@@ -7,10 +7,12 @@ import { prisma } from '../../lib/prisma';
 import { validateBody } from '../../lib/validate';
 import { requireAuth } from '../../middleware/auth';
 
-const updateMeSchema = z.object({
-  name: z.string().min(1).max(100).trim().optional(),
-  phone: z.string().max(30).nullable().optional(),
-});
+const updateMeSchema = z
+  .object({
+    name: z.string().min(1).max(100).trim().optional(),
+    phone: z.string().max(30).nullable().optional(),
+  })
+  .strict();
 
 export const usersRouter = Router();
 

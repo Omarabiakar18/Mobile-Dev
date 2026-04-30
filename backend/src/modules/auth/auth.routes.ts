@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ok } from '../../lib/respond';
@@ -15,8 +16,25 @@ import {
 
 export const authRouter = Router();
 
+// Per-route limiters. The previous mounted-with-skip approach didn't work
+// because `req.path` after `app.use('/auth', limiter, router)` is the full
+// path, not the router-relative one — so the skip never matched.
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+const refreshLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30, // refresh is hot during cold-start of multiple parallel requests
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
 authRouter.post(
   '/register',
+  writeLimiter,
   validateBody(registerSchema),
   asyncHandler(async (req, res) => {
     const result = await authService.register(req.body);
@@ -26,6 +44,7 @@ authRouter.post(
 
 authRouter.post(
   '/login',
+  writeLimiter,
   validateBody(loginSchema),
   asyncHandler(async (req, res) => {
     const result = await authService.login(req.body);
@@ -35,6 +54,7 @@ authRouter.post(
 
 authRouter.post(
   '/refresh',
+  refreshLimiter,
   validateBody(refreshSchema),
   asyncHandler(async (req, res) => {
     const result = await authService.refresh(req.body.refreshToken);

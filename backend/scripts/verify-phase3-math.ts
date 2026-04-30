@@ -97,7 +97,7 @@ console.log('\n[3] computeAvgKmPerDay — returns null when <2 entries even at 1
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n[4] computePredictNext — bootstrap (<3 full tanks) returns insufficient_data');
+console.log('\n[4] computePredictNext — bootstrap (<2 valid pairs) returns insufficient_data');
 {
   const today = new Date('2026-04-30T12:00:00Z');
   const car = {
@@ -105,6 +105,7 @@ console.log('\n[4] computePredictNext — bootstrap (<3 full tanks) returns insu
     currentKm: 12_000,
     avgKmPerDay: new Prisma.Decimal('100'),
   };
+  // Only 2 full tanks → only 1 pair → insufficient.
   const entries = [
     { odometer: 10_000, liters: new Prisma.Decimal('40'), isFullTank: true },
     { odometer: 11_000, liters: new Prisma.Decimal('38'), isFullTank: true },
@@ -112,6 +113,26 @@ console.log('\n[4] computePredictNext — bootstrap (<3 full tanks) returns insu
   const r = computePredictNext(car, entries, today);
   assertEq('confidence', r.confidence, 'insufficient_data');
   assertEq('tankRemainingLiters', r.tankRemainingLiters, null);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n[4b] computePredictNext — 3 full tanks but a duplicate odo still yields insufficient_data');
+{
+  const today = new Date('2026-04-30T12:00:00Z');
+  const car = {
+    tankSize: new Prisma.Decimal('50.00'),
+    currentKm: 12_000,
+    avgKmPerDay: new Prisma.Decimal('100'),
+  };
+  // 3 full tanks but two share an odometer → only 1 valid pair → still
+  // insufficient. Previously this misfired as data_inconsistent.
+  const entries = [
+    { odometer: 10_000, liters: new Prisma.Decimal('40'), isFullTank: true },
+    { odometer: 10_000, liters: new Prisma.Decimal('5'), isFullTank: true },
+    { odometer: 11_000, liters: new Prisma.Decimal('80'), isFullTank: true },
+  ];
+  const r = computePredictNext(car, entries, today);
+  assertEq('confidence', r.confidence, 'insufficient_data');
 }
 
 // ---------------------------------------------------------------------------
