@@ -49,6 +49,85 @@ class RemindersListScreen extends ConsumerWidget {
   }
 }
 
+/// Visual style bucket for a reminder, derived from `daysRemaining`.
+class _ProjectionStyle {
+  const _ProjectionStyle({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.emphasized,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool emphasized;
+
+  /// `daysRemaining == null` → "Set an interval to see projection" muted.
+  /// `daysRemaining < 0` → red overdue.
+  /// `0 <= daysRemaining <= 7` → amber, bold.
+  /// `8..30` → normal text, bold.
+  /// `> 30` → normal text.
+  static _ProjectionStyle resolve(
+    BuildContext context,
+    ServiceReminder r,
+    DateFormat dateFmt,
+  ) {
+    final theme = Theme.of(context);
+    final days = r.daysRemaining;
+    if (days == null) {
+      return _ProjectionStyle(
+        label: 'Set an interval to see projection',
+        icon: Icons.schedule_outlined,
+        color: theme.colorScheme.outline,
+        emphasized: false,
+      );
+    }
+    final dateStr =
+        r.predictedDate == null ? '' : ' (${dateFmt.format(r.predictedDate!)})';
+
+    if (days < 0) {
+      return _ProjectionStyle(
+        label: 'Overdue by ${-days} ${(-days) == 1 ? 'day' : 'days'}$dateStr',
+        icon: Icons.error_outline,
+        color: theme.colorScheme.error,
+        emphasized: true,
+      );
+    }
+    if (days == 0) {
+      return _ProjectionStyle(
+        label: 'Due today$dateStr',
+        icon: Icons.warning_amber_rounded,
+        color: Colors.amber.shade800,
+        emphasized: true,
+      );
+    }
+    if (days <= 7) {
+      return _ProjectionStyle(
+        label: 'Due in $days ${days == 1 ? 'day' : 'days'}$dateStr',
+        icon: Icons.schedule,
+        color: Colors.amber.shade800,
+        emphasized: true,
+      );
+    }
+    if (days <= 30) {
+      return _ProjectionStyle(
+        label: 'Due in $days days$dateStr',
+        icon: Icons.schedule,
+        color: theme.colorScheme.onSurface,
+        emphasized: true,
+      );
+    }
+    // Beyond 30 days — show date for context, calmer emphasis.
+    return _ProjectionStyle(
+      label: 'Due in $days days$dateStr',
+      icon: Icons.schedule_outlined,
+      color: theme.colorScheme.onSurface,
+      emphasized: false,
+    );
+  }
+}
+
 class _ReminderCard extends StatelessWidget {
   const _ReminderCard({required this.reminder});
   final ServiceReminder reminder;
@@ -66,15 +145,7 @@ class _ReminderCard extends StatelessWidget {
         'every ${reminder.intervalMonths} mo',
     ];
 
-    final overdue = reminder.isOverdue;
-    final dueSoon = reminder.isDueSoon;
-
-    Color? nextColor;
-    if (overdue) {
-      nextColor = theme.colorScheme.error;
-    } else if (dueSoon) {
-      nextColor = Colors.amber.shade800;
-    }
+    final style = _ProjectionStyle.resolve(context, reminder, dateFmt);
 
     return Card(
       child: Padding(
@@ -122,29 +193,26 @@ class _ReminderCard extends StatelessWidget {
                 ),
               ),
             ],
-            if (reminder.predictedDate != null) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(
-                    overdue ? Icons.error_outline : Icons.schedule,
-                    size: 18,
-                    color: nextColor ?? theme.colorScheme.outline,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      _nextLabel(reminder, dateFmt),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: nextColor,
-                        fontWeight:
-                            (overdue || dueSoon) ? FontWeight.w600 : null,
-                      ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  style.icon,
+                  size: 18,
+                  color: style.color,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    style.label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: style.color,
+                      fontWeight: style.emphasized ? FontWeight.w600 : null,
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
             if (reminder.aiMessage != null && reminder.aiMessage!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Container(
@@ -177,15 +245,6 @@ class _ReminderCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _nextLabel(ServiceReminder r, DateFormat dateFmt) {
-    final dateStr = dateFmt.format(r.predictedDate!);
-    final days = r.daysRemaining;
-    if (days == null) return 'Next: $dateStr';
-    if (days < 0) return 'Overdue by ${-days} days ($dateStr)';
-    if (days == 0) return 'Due today ($dateStr)';
-    return 'Next: $dateStr (in $days days)';
   }
 }
 

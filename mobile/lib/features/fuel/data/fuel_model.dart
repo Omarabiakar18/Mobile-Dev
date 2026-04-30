@@ -95,3 +95,62 @@ class FuelEntry {
     return double.tryParse(v.toString()) ?? 0;
   }
 }
+
+/// Aggregated metrics for a single window (e.g. last 30 days).
+class FuelWindowStats {
+  FuelWindowStats({
+    required this.liters,
+    required this.cost,
+    required this.fillCount,
+  });
+
+  final double liters;
+  final double cost;
+  final int fillCount;
+
+  factory FuelWindowStats.fromJson(Map<String, dynamic> j) => FuelWindowStats(
+        liters: FuelEntry._parseDecimal(j['liters']),
+        cost: FuelEntry._parseDecimal(j['cost']),
+        fillCount: (j['fillCount'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// Response shape of `GET /cars/:carId/fuel/stats`.
+///
+/// `avgConsumptionPer100km` is null when fewer than 2 full-tank fill-ups have
+/// been logged — the UI shows the "add more entries" copy in that case.
+class FuelStats {
+  FuelStats({
+    required this.totalLiters,
+    required this.totalCost,
+    required this.totalKm,
+    required this.fillCount,
+    this.avgConsumptionPer100km,
+    required this.last30,
+    required this.last90,
+  });
+
+  final double totalLiters;
+  final double totalCost;
+  final int totalKm;
+  final int fillCount;
+  final double? avgConsumptionPer100km;
+  final FuelWindowStats last30;
+  final FuelWindowStats last90;
+
+  factory FuelStats.fromJson(Map<String, dynamic> j) => FuelStats(
+        totalLiters: FuelEntry._parseDecimal(j['totalLiters']),
+        totalCost: FuelEntry._parseDecimal(j['totalCost']),
+        totalKm: (j['totalKm'] as num?)?.toInt() ?? 0,
+        fillCount: (j['fillCount'] as num?)?.toInt() ?? 0,
+        avgConsumptionPer100km: j['avgConsumptionPer100km'] == null
+            ? null
+            : FuelEntry._parseDecimal(j['avgConsumptionPer100km']),
+        last30: FuelWindowStats.fromJson(
+          (j['last30'] as Map?)?.cast<String, dynamic>() ?? const {},
+        ),
+        last90: FuelWindowStats.fromJson(
+          (j['last90'] as Map?)?.cast<String, dynamic>() ?? const {},
+        ),
+      );
+}

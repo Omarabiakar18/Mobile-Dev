@@ -8,6 +8,8 @@ import '../cars/data/car_model.dart';
 import '../cars/data/cars_api.dart';
 import '../documents/data/document_model.dart';
 import '../documents/data/documents_api.dart';
+import '../fuel/data/fuel_api.dart';
+import '../fuel/data/predict_next_model.dart';
 import '../reminders/data/reminder_model.dart';
 import '../reminders/data/reminders_api.dart';
 import 'selected_car_provider.dart';
@@ -69,6 +71,7 @@ class _Dashboard extends ConsumerWidget {
         ref.invalidate(carsListProvider);
         ref.invalidate(expiringDocumentsProvider(car.id));
         ref.invalidate(dueRemindersProvider(car.id));
+        ref.invalidate(fuelPredictionProvider(car.id));
       },
       child: ListView(
         padding: const EdgeInsets.all(16),
@@ -291,16 +294,121 @@ class _DueRemindersBanner extends StatelessWidget {
   }
 }
 
-class _PredictNextCard extends StatelessWidget {
+/// Renders the predict-next card on the home dashboard. Three confidence
+/// states map to three layouts; tapping the card opens an explanation sheet.
+class _PredictNextCard extends ConsumerWidget {
   const _PredictNextCard({required this.car});
   final Car car;
 
   @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(fuelPredictionProvider(car.id));
+    return async.when(
+      loading: () => const _PredictCardShell.loading(),
+      error: (_, _) => const _PredictCardShell.error(),
+      data: (p) => _PredictCardShell(car: car, prediction: p),
+    );
+  }
+}
+
+/// Stateless renderer for the predict card. Splits state-shape decisions out
+/// of the Riverpod-watching widget for testability.
+class _PredictCardShell extends StatelessWidget {
+  const _PredictCardShell({required this.car, required this.prediction})
+      : _loading = false,
+        _hasError = false;
+  const _PredictCardShell.loading()
+      : car = null,
+        prediction = null,
+        _loading = true,
+        _hasError = false;
+  const _PredictCardShell.error()
+      : car = null,
+        prediction = null,
+        _loading = false,
+        _hasError = true;
+
+  final Car? car;
+  final FuelPrediction? prediction;
+  final bool _loading;
+  final bool _hasError;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Phase 2: predict-next is a stub returning insufficient_data. Real math
-    // lands in Phase 3. Render the placeholder state here so the layout is
-    // ready for the real card later.
+
+    if (_loading) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(Icons.local_gas_station_outlined,
+                  size: 40, color: theme.colorScheme.primary),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Next fill-up prediction',
+                        style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    const LinearProgressIndicator(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_hasError) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(Icons.local_gas_station_outlined,
+                  size: 40, color: theme.colorScheme.outline),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Next fill-up prediction',
+                        style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 4),
+                    Text("Couldn't load prediction. Pull to refresh.",
+                        style: theme.textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final p = prediction!;
+    final c = car!;
+    switch (p.confidence) {
+      case PredictConfidence.insufficientData:
+        return _InsufficientCard(theme: theme);
+      case PredictConfidence.dataInconsistent:
+        return _InconsistentCard(theme: theme, carId: c.id);
+      case PredictConfidence.ok:
+        return _OkCard(theme: theme, car: c, prediction: p);
+    }
+  }
+}
+
+class _InsufficientCard extends StatelessWidget {
+  const _InsufficientCard({required this.theme});
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -313,10 +421,11 @@ class _PredictNextCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Next fill-up prediction', style: theme.textTheme.titleSmall),
+                  Text('Next fill-up prediction',
+                      style: theme.textTheme.titleSmall),
                   const SizedBox(height: 4),
                   Text(
-                    'Add at least 3 full-tank fill-ups to enable.',
+                    'Add at least 3 full-tank fill-ups to enable predictions.',
                     style: theme.textTheme.bodySmall,
                   ),
                 ],
@@ -324,6 +433,281 @@ class _PredictNextCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _InconsistentCard extends StatelessWidget {
+  const _InconsistentCard({required this.theme, required this.carId});
+  final ThemeData theme;
+  final String carId;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = theme.colorScheme.error;
+    return Card(
+      color: color.withValues(alpha: 0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: color.withValues(alpha: 0.4)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        // The fuel list lives inside the car detail TabBar, so navigate to
+        // `/cars/:id` rather than a non-existent `/cars/:id/fuel` route.
+        onTap: () => context.push('/cars/$carId'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(Icons.error_outline, size: 40, color: color),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Check your fuel entries',
+                      style: theme.textTheme.titleSmall?.copyWith(color: color),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Your latest odometer is below the last fill-up — '
+                      'check your entries.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: color),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OkCard extends StatelessWidget {
+  const _OkCard({
+    required this.theme,
+    required this.car,
+    required this.prediction,
+  });
+
+  final ThemeData theme;
+  final Car car;
+  final FuelPrediction prediction;
+
+  @override
+  Widget build(BuildContext context) {
+    final liters = prediction.tankRemainingLiters ?? 0;
+    final litersStr = '${liters.toStringAsFixed(1)} L';
+    final days = prediction.daysRemaining;
+
+    final hasDate = days != null;
+    final daysColor = !hasDate
+        ? theme.colorScheme.onSurface
+        : (days <= 0
+            ? theme.colorScheme.error
+            : (days <= 3
+                ? Colors.amber.shade800
+                : theme.colorScheme.onSurface));
+
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _showExplainSheet(context),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(
+                Icons.local_gas_station,
+                size: 40,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Next fill-up prediction',
+                        style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 6),
+                    if (hasDate)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            '$days',
+                            style: theme.textTheme.headlineMedium?.copyWith(
+                              color: daysColor,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            days == 1 ? 'day' : 'days',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: daysColor,
+                            ),
+                          ),
+                          if (prediction.predictedDate != null) ...[
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                '≈ ${DateFormat.MMMd().format(prediction.predictedDate!)}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.outline,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ],
+                      )
+                    else
+                      Text(
+                        'Tank: ~$litersStr remaining',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasDate
+                          ? '$litersStr left in tank'
+                          : 'Add daily driving data for date estimate',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.info_outline, color: theme.colorScheme.outline),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showExplainSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) {
+        final theme = Theme.of(sheetCtx);
+        final consumption = prediction.consumptionPer100km;
+        final kmSince = prediction.kmSinceLastFull;
+        final pace = car.avgKmPerDay;
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('How we got this number',
+                    style: theme.textTheme.titleLarge),
+                const SizedBox(height: 12),
+                if (consumption != null)
+                  _ExplainRow(
+                    icon: Icons.speed_outlined,
+                    label: 'Avg consumption',
+                    value: '${consumption.toStringAsFixed(1)} L/100km',
+                  ),
+                if (kmSince != null)
+                  _ExplainRow(
+                    icon: Icons.route_outlined,
+                    label: 'Driven since last full tank',
+                    value: '$kmSince km',
+                  ),
+                if (pace != null)
+                  _ExplainRow(
+                    icon: Icons.directions_car_outlined,
+                    label: 'Daily pace',
+                    value: '${pace.toStringAsFixed(0)} km/day',
+                  ),
+                if (prediction.tankRemainingLiters != null)
+                  _ExplainRow(
+                    icon: Icons.local_gas_station_outlined,
+                    label: 'Tank remaining',
+                    value:
+                        '${prediction.tankRemainingLiters!.toStringAsFixed(1)} L',
+                  ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  // TODO(phase4 §16-C): replace this static note with the LLM
+                  // explanation from `GET /cars/:carId/fuel/predict-next/explain`.
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.auto_awesome_outlined,
+                        size: 18,
+                        color: theme.colorScheme.onSecondaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'These numbers come from your fuel entries. '
+                          'AI explanation lands in Phase 4.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ExplainRow extends StatelessWidget {
+  const _ExplainRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: theme.colorScheme.outline),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(label, style: theme.textTheme.bodyMedium),
+          ),
+          Text(
+            value,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

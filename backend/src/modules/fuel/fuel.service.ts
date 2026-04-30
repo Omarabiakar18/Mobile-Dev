@@ -2,10 +2,12 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma';
 import { NotFoundError } from '../../lib/errors';
+import { recomputeAvgKmPerDay } from '../../lib/avg-km-per-day';
 import { assertOwnsCar } from '../cars/cars.service';
 import type { CreateFuelInput, UpdateFuelInput } from './fuel.schemas';
 
 const DEFAULT_PAGE_SIZE = 50;
+const MS_PER_DAY = 86_400_000;
 
 export async function listForCar(
   userId: string,
@@ -44,21 +46,27 @@ export async function getOne(userId: string, fuelId: string) {
 
 export async function create(userId: string, carId: string, input: CreateFuelInput) {
   await assertOwnsCar(userId, carId);
-  return prisma.fuelEntry.create({
-    data: {
-      carId,
-      date: new Date(input.date),
-      odometer: input.odometer,
-      liters: new Prisma.Decimal(input.liters),
-      pricePerLiter: new Prisma.Decimal(input.pricePerLiter),
-      totalCost: new Prisma.Decimal(input.totalCost),
-      fuelType: input.fuelType,
-      station: input.station ?? null,
-      isFullTank: input.isFullTank ?? false,
-      latitude: input.latitude ?? null,
-      longitude: input.longitude ?? null,
-      notes: input.notes ?? null,
-    },
+  // Wrap insert + avgKmPerDay recompute in a single tx so the cached value on
+  // Car never lags the underlying entries (spec §6.2).
+  return prisma.$transaction(async (tx) => {
+    const entry = await tx.fuelEntry.create({
+      data: {
+        carId,
+        date: new Date(input.date),
+        odometer: input.odometer,
+        liters: new Prisma.Decimal(input.liters),
+        pricePerLiter: new Prisma.Decimal(input.pricePerLiter),
+        totalCost: new Prisma.Decimal(input.totalCost),
+        fuelType: input.fuelType,
+        station: input.station ?? null,
+        isFullTank: input.isFullTank ?? false,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        notes: input.notes ?? null,
+      },
+    });
+    await recomputeAvgKmPerDay(carId, tx);
+    return entry;
   });
 }
 
@@ -81,14 +89,21 @@ export async function update(userId: string, fuelId: string, input: UpdateFuelIn
   if (input.longitude !== undefined) data.longitude = input.longitude;
   if (input.notes !== undefined) data.notes = input.notes;
 
-  return prisma.fuelEntry.update({ where: { id: fuelId }, data });
+  return prisma.$transaction(async (tx) => {
+    const entry = await tx.fuelEntry.update({ where: { id: fuelId }, data });
+    await recomputeAvgKmPerDay(existing.carId, tx);
+    return entry;
+  });
 }
 
 export async function remove(userId: string, fuelId: string) {
   const existing = await prisma.fuelEntry.findUnique({ where: { id: fuelId } });
   if (!existing) throw new NotFoundError('Fuel entry not found');
   await assertOwnsCar(userId, existing.carId);
-  await prisma.fuelEntry.delete({ where: { id: fuelId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.fuelEntry.delete({ where: { id: fuelId } });
+    await recomputeAvgKmPerDay(existing.carId, tx);
+  });
 }
 
 interface WindowTotals {
@@ -174,20 +189,148 @@ export async function stats(userId: string, carId: string) {
   };
 }
 
+export type PredictNextResult =
+  | {
+      confidence: 'insufficient_data' | 'data_inconsistent';
+      tankRemainingLiters: null;
+      daysRemaining: null;
+      predictedDate: null;
+    }
+  | {
+      confidence: 'ok';
+      tankRemainingLiters: number;
+      daysRemaining: number | null;
+      predictedDate: string | null;
+      consumptionPer100km: number;
+      kmSinceLastFull: number;
+    };
+
+interface PredictNextCar {
+  tankSize: Prisma.Decimal | number;
+  currentKm: number;
+  avgKmPerDay: Prisma.Decimal | number | null;
+}
+
+interface PredictNextEntry {
+  odometer: number;
+  liters: Prisma.Decimal | number;
+  isFullTank: boolean;
+}
+
 /**
- * Phase 3 will implement the full predictive next fill-up algorithm.
- * TODO(phase 3): see spec §6.1 — needs ≥3 full-tank entries, computes
- * consumptionPer100km from pairs, projects tankRemaining + daysRemaining
- * using cached `Car.avgKmPerDay`.
+ * Pure §6.1 implementation — exported so the math can be smoke-tested without
+ * a DB. The async wrapper below loads the same shape and forwards.
+ *
+ * Bootstrap requires ≥3 full-tank entries (spec §6.1). Fewer is unreliable.
+ * If `currentKm < lastFullTank.odometer`, returns `data_inconsistent` so the
+ * Flutter UI can prompt the user to fix their odometer entries.
  */
-export async function predictNext(userId: string, carId: string) {
-  await assertOwnsCar(userId, carId);
+export function computePredictNext(
+  car: PredictNextCar,
+  entries: PredictNextEntry[],
+  today: Date = new Date(),
+): PredictNextResult {
+  const fullTanks = entries
+    .filter((e) => e.isFullTank)
+    .sort((a, b) => a.odometer - b.odometer);
+
+  if (fullTanks.length < 3) {
+    return {
+      confidence: 'insufficient_data',
+      tankRemainingLiters: null,
+      daysRemaining: null,
+      predictedDate: null,
+    };
+  }
+
+  const lastFullTank = fullTanks[fullTanks.length - 1];
+  if (car.currentKm < lastFullTank.odometer) {
+    return {
+      confidence: 'data_inconsistent',
+      tankRemainingLiters: null,
+      daysRemaining: null,
+      predictedDate: null,
+    };
+  }
+
+  // Avg L/100km across every consecutive (full-tank, full-tank) pair. The
+  // liters on entry[i] are what filled the tank back to full, which is an
+  // approximation of what was consumed over the (odo[i-1] → odo[i]) leg.
+  let consumptionTotal = 0;
+  let pairs = 0;
+  for (let i = 1; i < fullTanks.length; i++) {
+    const prev = fullTanks[i - 1];
+    const curr = fullTanks[i];
+    const kmLeg = curr.odometer - prev.odometer;
+    if (kmLeg <= 0) continue;
+    consumptionTotal += (toNumber(curr.liters) / kmLeg) * 100;
+    pairs += 1;
+  }
+  // pairs is at least fullTanks.length - 1 ≥ 2 unless we drop pairs for
+  // non-positive km (duplicate odometer reads). Defensive guard:
+  if (pairs === 0) {
+    return {
+      confidence: 'data_inconsistent',
+      tankRemainingLiters: null,
+      daysRemaining: null,
+      predictedDate: null,
+    };
+  }
+  const consumptionPer100km = consumptionTotal / pairs;
+
+  const kmSinceLastFull = car.currentKm - lastFullTank.odometer;
+  const litersUsed = (kmSinceLastFull * consumptionPer100km) / 100;
+  const tankSizeNum = toNumber(car.tankSize);
+  const tankRemainingLitersRaw = Math.max(0, tankSizeNum - litersUsed);
+  const tankRemainingLiters = Math.round(tankRemainingLitersRaw * 10) / 10;
+
+  const avg = car.avgKmPerDay == null ? 0 : toNumber(car.avgKmPerDay);
+  if (avg <= 0) {
+    return {
+      confidence: 'ok',
+      tankRemainingLiters,
+      daysRemaining: null,
+      predictedDate: null,
+      consumptionPer100km,
+      kmSinceLastFull,
+    };
+  }
+
+  // daysRemaining = (km of fuel left) / (km/day driven)
+  // km of fuel left = tankRemainingLiters / consumptionPer100km * 100
+  const daysRemainingRaw =
+    ((tankRemainingLitersRaw / consumptionPer100km) * 100) / avg;
+  const daysRemaining = Math.round(daysRemainingRaw * 10) / 10;
+  const predictedDate = new Date(
+    today.getTime() + daysRemainingRaw * MS_PER_DAY,
+  ).toISOString();
+
   return {
-    confidence: 'insufficient_data' as const,
-    tankRemainingLiters: null,
-    daysRemaining: null,
-    predictedDate: null,
+    confidence: 'ok',
+    tankRemainingLiters,
+    daysRemaining,
+    predictedDate,
+    consumptionPer100km,
+    kmSinceLastFull,
   };
+}
+
+/**
+ * Predictive next fill-up — spec §6.1. Loads the car + every fuel entry, then
+ * delegates to `computePredictNext`. Response shape matches what the Flutter
+ * "Explain this prediction" modal renders (§16-C).
+ */
+export async function predictNext(
+  userId: string,
+  carId: string,
+): Promise<PredictNextResult> {
+  const car = await assertOwnsCar(userId, carId);
+  const entries = await prisma.fuelEntry.findMany({
+    where: { carId },
+    orderBy: { odometer: 'asc' },
+    select: { odometer: true, liters: true, isFullTank: true },
+  });
+  return computePredictNext(car, entries);
 }
 
 function toNumber(v: Prisma.Decimal | number | null | undefined): number {

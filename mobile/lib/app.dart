@@ -12,6 +12,7 @@ import 'features/cars/presentation/cars_list_screen.dart';
 import 'features/documents/presentation/add_document_screen.dart';
 import 'features/documents/presentation/documents_list_screen.dart';
 import 'features/fuel/presentation/add_fuel_screen.dart';
+import 'features/fuel/presentation/fuel_stats_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/splash_screen.dart';
 import 'features/maintenance/presentation/add_maintenance_screen.dart';
@@ -73,6 +74,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/cars/:id/fuel/new',
         builder: (_, state) => AddFuelScreen(carId: state.pathParameters['id']!),
+      ),
+
+      // Phase 3 — fuel stats screen
+      GoRoute(
+        path: '/cars/:id/fuel/stats',
+        builder: (_, state) =>
+            FuelStatsScreen(carId: state.pathParameters['id']!),
       ),
 
       // Phase 2 — maintenance

@@ -5,6 +5,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/api/dio_client.dart';
 import '../../cars/data/car_model.dart';
 import 'fuel_model.dart';
+import 'predict_next_model.dart';
 
 class FuelApi {
   FuelApi(this._client);
@@ -101,23 +102,27 @@ class FuelApi {
     }
   }
 
-  Future<Map<String, dynamic>> stats(String carId) async {
+  Future<FuelStats> stats(String carId) async {
     try {
       final r = await _client.dio.get<Map<String, dynamic>>(
         '/cars/$carId/fuel/stats',
       );
-      return Map<String, dynamic>.from(r.data!['data'] as Map);
+      return FuelStats.fromJson(
+        (r.data!['data'] as Map).cast<String, dynamic>(),
+      );
     } on DioException catch (e) {
       throw ApiException.fromDio(e);
     }
   }
 
-  Future<Map<String, dynamic>> predictNext(String carId) async {
+  Future<FuelPrediction> predictNext(String carId) async {
     try {
       final r = await _client.dio.get<Map<String, dynamic>>(
         '/cars/$carId/fuel/predict-next',
       );
-      return Map<String, dynamic>.from(r.data!['data'] as Map);
+      return FuelPrediction.fromJson(
+        (r.data!['data'] as Map).cast<String, dynamic>(),
+      );
     } on DioException catch (e) {
       throw ApiException.fromDio(e);
     }
@@ -133,4 +138,18 @@ final fuelApiProvider = Provider<FuelApi>((ref) {
 final fuelListProvider =
     FutureProvider.family<List<FuelEntry>, String>((ref, carId) async {
   return ref.watch(fuelApiProvider).listForCar(carId);
+});
+
+/// Aggregated fuel stats for a car (totals, last-30/90, avg consumption).
+/// Invalidate to force a refresh.
+final fuelStatsProvider =
+    FutureProvider.family<FuelStats, String>((ref, carId) async {
+  return ref.watch(fuelApiProvider).stats(carId);
+});
+
+/// Predicted next fill-up payload for a car. The home dashboard's
+/// pull-to-refresh invalidates this alongside the other dashboard providers.
+final fuelPredictionProvider =
+    FutureProvider.family<FuelPrediction, String>((ref, carId) async {
+  return ref.watch(fuelApiProvider).predictNext(carId);
 });

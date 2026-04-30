@@ -22,6 +22,7 @@ import {
   carScopedRemindersRouter,
   remindersByIdRouter,
 } from './modules/reminders/reminders.routes';
+import { startAvgKmPerDayCron } from './jobs/avg-km-per-day.cron';
 
 async function main() {
   const app = express();
@@ -79,9 +80,13 @@ async function main() {
     logger.info(`Garage backend listening on http://localhost:${env.PORT}`);
   });
 
+  // Phase 3: nightly recompute of stale avgKmPerDay values (spec §6.2).
+  const avgKmCron = startAvgKmPerDayCron();
+
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down...`);
+    avgKmCron.stop();
     server.close(() => logger.info('HTTP server closed'));
     await prisma.$disconnect();
     process.exit(0);

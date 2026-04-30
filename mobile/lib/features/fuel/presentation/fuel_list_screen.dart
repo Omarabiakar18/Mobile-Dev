@@ -24,16 +24,41 @@ class FuelListScreen extends ConsumerWidget {
             message: e is ApiException ? e.message : e.toString(),
             onRetry: () => ref.invalidate(fuelListProvider(carId)),
           ),
-          data: (list) => list.isEmpty
-              ? _EmptyState(
-                  onAdd: () => context.push('/cars/$carId/fuel/new'),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-                  itemCount: list.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) => _FuelCard(entry: list[i]),
+          data: (list) {
+            if (list.isEmpty) {
+              return _EmptyState(
+                onAdd: () => context.push('/cars/$carId/fuel/new'),
+              );
+            }
+            return CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () =>
+                              context.push('/cars/$carId/fuel/stats'),
+                          icon: const Icon(Icons.bar_chart),
+                          label: const Text('Stats'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                  sliver: SliverList.separated(
+                    itemCount: list.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (_, i) => _FuelCard(entry: list[i]),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(

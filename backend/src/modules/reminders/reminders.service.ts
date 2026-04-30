@@ -29,12 +29,18 @@ async function assertOwnsReminder(
 }
 
 /**
- * Phase 2 calendar-only projection. Phase 3 will replace this with the full
- * km/day math from spec §6.2. Returns `null` when neither interval can produce
- * a date (e.g. only `intervalKm` set but no `avgKmPerDay` cached on the car).
+ * Phase 3 — `min(kmBased, calendar)` projection per spec §6.2. The km leg
+ * activates once `Car.avgKmPerDay` is cached (recomputed in the same tx as
+ * every fuel mutation, plus a nightly cron for stale rows). When both legs
+ * are computable we take the earlier of the two — whichever threshold the
+ * driver hits first. Returns `null` only when neither leg produces a date
+ * (e.g. km-only reminder on a car with no fuel history yet).
  *
- * NOTE: kept exported and pure so Phase 3 can swap the body without touching
- * route/service callers.
+ * `daysRemaining` is whole days from `now` to `predictedDate`. It can be
+ * negative when the reminder is overdue — callers (the /due endpoint, the
+ * Flutter banner) display "overdue by N days" in that case.
+ *
+ * Pure + exported so the math can be smoke-tested in isolation.
  */
 export function projectNextDate(
   reminder: Pick<
@@ -44,34 +50,45 @@ export function projectNextDate(
   car: Pick<Car, 'currentKm' | 'avgKmPerDay'>,
   now: Date = new Date(),
 ): { predictedDate: Date; daysRemaining: number } | null {
-  const candidates: Date[] = [];
+  let kmBasedDate: Date | null = null;
+  let calendarDate: Date | null = null;
 
-  // Calendar leg — cheap, always applies if intervalMonths is set.
-  if (reminder.intervalMonths != null) {
-    const d = new Date(reminder.lastDoneDate);
-    d.setMonth(d.getMonth() + reminder.intervalMonths);
-    candidates.push(d);
-  }
-
-  // Km leg — only useful once Phase 3 wires `avgKmPerDay`. For Phase 2 this
-  // branch is mostly dormant, which the spec calls out explicitly.
+  // Km leg: needs both an intervalKm and a positive cached avgKmPerDay.
+  // kmRemaining can go negative when the car is already past the threshold,
+  // which produces a `predictedDate` in the past — that's correct (overdue).
   if (reminder.intervalKm != null && car.avgKmPerDay != null) {
     const avg = Number(car.avgKmPerDay);
     if (avg > 0) {
       const kmRemaining =
         reminder.lastDoneKm + reminder.intervalKm - car.currentKm;
-      const days = kmRemaining / avg;
-      const d = new Date(now.getTime() + days * MS_PER_DAY);
-      candidates.push(d);
+      const daysFromKm = kmRemaining / avg;
+      kmBasedDate = new Date(now.getTime() + daysFromKm * MS_PER_DAY);
     }
   }
 
-  if (candidates.length === 0) return null;
+  // Calendar leg: needs only an intervalMonths. setMonth handles month-length
+  // edge cases (e.g. Jan 31 + 1 month → Mar 3) the same way the JS Date API
+  // does — close enough for human-scale "every 6 months" reminders.
+  if (reminder.intervalMonths != null) {
+    const d = new Date(reminder.lastDoneDate);
+    d.setMonth(d.getMonth() + reminder.intervalMonths);
+    calendarDate = d;
+  }
 
-  // Whichever projection comes first wins (matches §6.2 `min(km, calendar)`).
-  candidates.sort((a, b) => a.getTime() - b.getTime());
-  const predictedDate = candidates[0];
-  const daysRemaining = Math.ceil(
+  // min(km, calendar) when both exist; whichever is non-null otherwise.
+  let predictedDate: Date | null = null;
+  if (kmBasedDate && calendarDate) {
+    predictedDate =
+      kmBasedDate.getTime() <= calendarDate.getTime() ? kmBasedDate : calendarDate;
+  } else {
+    predictedDate = kmBasedDate ?? calendarDate;
+  }
+
+  if (!predictedDate) return null;
+
+  // Whole days; can be negative for overdue reminders. Math.round picks the
+  // nearest day so a 12-hour-overdue reminder shows as 0 days, not -1.
+  const daysRemaining = Math.round(
     (predictedDate.getTime() - now.getTime()) / MS_PER_DAY,
   );
   return { predictedDate, daysRemaining };
