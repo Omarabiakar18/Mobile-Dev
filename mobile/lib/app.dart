@@ -1,62 +1,84 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme/app_theme.dart';
+import 'features/auth/presentation/auth_notifier.dart';
+import 'features/auth/presentation/login_screen.dart';
+import 'features/auth/presentation/register_screen.dart';
+import 'features/cars/presentation/add_car_screen.dart';
+import 'features/cars/presentation/car_detail_screen.dart';
+import 'features/cars/presentation/cars_list_screen.dart';
+import 'features/home/splash_screen.dart';
 
-class GarageApp extends StatelessWidget {
+class GarageApp extends ConsumerWidget {
   const GarageApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(routerProvider);
     return MaterialApp.router(
       title: 'Garage',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.system,
-      routerConfig: _router,
+      routerConfig: router,
     );
   }
 }
 
-// Placeholder router — Phase 1 will replace this with the real auth + home tree.
-final _router = GoRouter(
-  initialLocation: '/',
-  routes: [
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const _PlaceholderHome(),
-    ),
-  ],
-);
+/// Router rebuilds when auth state changes (loading → signed-in/out → ...).
+/// `redirect` is the choke-point that decides where the user lands.
+final routerProvider = Provider<GoRouter>((ref) {
+  return GoRouter(
+    initialLocation: '/',
+    refreshListenable: _AuthRefresh(ref),
+    redirect: (context, state) {
+      final auth = ref.read(authProvider);
+      final loc = state.matchedLocation;
 
-class _PlaceholderHome extends StatelessWidget {
-  const _PlaceholderHome();
+      // Bootstrap loading — let the splash render
+      if (auth.isLoading) return loc == '/splash' ? null : '/splash';
+
+      final signedIn = auth.maybeWhen(data: (u) => u != null, orElse: () => false);
+      final onAuth = loc == '/login' || loc == '/register';
+      final onSplash = loc == '/splash';
+
+      if (!signedIn && !onAuth) return '/login';
+      if (signedIn && (onAuth || onSplash)) return '/';
+      return null;
+    },
+    routes: [
+      GoRoute(path: '/splash', builder: (_, _) => const SplashScreen()),
+      GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+      GoRoute(path: '/', builder: (_, _) => const CarsListScreen()),
+      GoRoute(path: '/cars/new', builder: (_, _) => const AddCarScreen()),
+      GoRoute(
+        path: '/cars/:id',
+        builder: (_, state) => CarDetailScreen(carId: state.pathParameters['id']!),
+      ),
+    ],
+  );
+});
+
+/// Bridges Riverpod's `authProvider` changes to GoRouter's `refreshListenable`
+/// so the redirect re-evaluates on every auth state change.
+class _AuthRefresh extends ChangeNotifier {
+  _AuthRefresh(this._ref) {
+    _sub = _ref.listen<AsyncValue<dynamic>>(
+      authProvider,
+      (_, _) => notifyListeners(),
+      fireImmediately: false,
+    );
+  }
+  final Ref _ref;
+  late final ProviderSubscription<AsyncValue<dynamic>> _sub;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Garage')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.directions_car_filled, size: 80, color: theme.colorScheme.primary),
-              const SizedBox(height: 16),
-              Text('Garage', style: theme.textTheme.headlineMedium),
-              const SizedBox(height: 8),
-              Text(
-                'Scaffold ready. Phase 1 wires auth + cars CRUD next.',
-                style: theme.textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  void dispose() {
+    _sub.close();
+    super.dispose();
   }
 }

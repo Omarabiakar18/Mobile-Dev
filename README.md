@@ -15,30 +15,30 @@ See [GARAGE_PROJECT_SPEC.md](./GARAGE_PROJECT_SPEC.md) for the locked design.
 - Flutter (3.x) with iOS toolchain (Xcode)
 - A free Apple Developer account (for sideloading to your iPhone via Xcode)
 
-### 1. Backend
+### 1. Database (Postgres in Docker)
+
+From the project root:
+
+```bash
+# Start Docker Desktop first if it isn't running
+docker-compose up -d postgres minio
+```
+
+This brings up Postgres on `localhost:5432` (user `garage`, password `garage`, db `garage`) and MinIO on `localhost:9000`.
+
+### 2. Backend
 
 ```bash
 cd backend
-cp .env.example .env
+cp .env.example .env                 # then fill in GEMINI_API_KEY when you have one
 npm install
-npx prisma migrate dev --name init
-npm run db:seed
+npx prisma migrate dev --name init   # creates the schema in Postgres
 npm run dev
 ```
 
 Server listens on `http://localhost:3000`. Health check: `http://localhost:3000/health`.
 
-### 2. Database (alternative — full docker-compose)
-
-From the project root:
-
-```bash
-docker-compose up -d postgres minio
-# then in backend/:
-npx prisma migrate dev
-npm run db:seed
-npm run dev
-```
+> **Demo / dev shortcut:** set `DEMO_MODE=true` in `.env` to skip Google Vision and the LLM (returns hardcoded receipt fields and template strings). Always run the live demo with this on.
 
 ### 3. Mobile app
 
@@ -49,7 +49,20 @@ open ios/Runner.xcworkspace        # one-time: configure signing in Xcode
 flutter run                         # runs on connected iPhone / simulator
 ```
 
-The Flutter app expects the backend at `http://localhost:3000` by default. For running on a real iPhone over USB, point it at your Mac's LAN IP (configurable in `mobile/lib/core/api/base_url.dart`).
+The Flutter app expects the backend at `http://localhost:3000` by default. For running on a real iPhone over USB:
+
+```bash
+ipconfig getifaddr en0              # gets your Mac's LAN IP (e.g. 192.168.1.42)
+flutter run --dart-define=API_BASE_URL=http://192.168.1.42:3000
+```
+
+### 4. Phase 1 — what works today
+
+- `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET /auth/me`
+- `PATCH /users/me`
+- `GET/POST /cars`, `GET/PATCH/DELETE /cars/:id`
+- Flutter: login + register screens, auth bootstrap from secure storage, automatic refresh on 401, cars list with empty/error states, add car form, car detail with tabbed shell.
+- Photo uploads, fuel/maintenance/documents/reminders, OCR, geofencing, LLM features → upcoming phases.
 
 ---
 
