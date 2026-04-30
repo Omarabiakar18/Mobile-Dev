@@ -12,6 +12,7 @@ import 'features/cars/presentation/cars_list_screen.dart';
 import 'features/documents/presentation/add_document_screen.dart';
 import 'features/documents/presentation/documents_list_screen.dart';
 import 'features/fuel/presentation/add_fuel_screen.dart';
+import 'features/home/home_screen.dart';
 import 'features/home/splash_screen.dart';
 import 'features/maintenance/presentation/add_maintenance_screen.dart';
 import 'features/maintenance/presentation/maintenance_list_screen.dart';
@@ -60,7 +61,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/splash', builder: (_, _) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
-      GoRoute(path: '/', builder: (_, _) => const CarsListScreen()),
+      GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+      GoRoute(path: '/cars', builder: (_, _) => const CarsListScreen()),
       GoRoute(path: '/cars/new', builder: (_, _) => const AddCarScreen()),
       GoRoute(
         path: '/cars/:id',
