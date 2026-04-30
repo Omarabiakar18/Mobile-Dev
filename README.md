@@ -11,28 +11,25 @@ See [GARAGE_PROJECT_SPEC.md](./GARAGE_PROJECT_SPEC.md) for the locked design.
 
 ### Prerequisites
 - Node.js 20+ (LTS)
-- Docker + docker-compose
+- A free [Neon](https://neon.tech) Postgres project (or any Postgres — local or hosted)
 - Flutter (3.x) with iOS toolchain (Xcode)
 - A free Apple Developer account (for sideloading to your iPhone via Xcode)
 
-### 1. Database (Postgres in Docker)
+### 1. Database — Neon (recommended)
 
-From the project root:
+1. Create a free project at [neon.tech](https://neon.tech)
+2. From the Neon dashboard, copy the **Pooled** connection string (has `-pooler` in the host)
+3. Derive the **Direct** URL by removing `-pooler` from the host (same credentials, same DB)
 
-```bash
-# Start Docker Desktop first if it isn't running
-docker-compose up -d postgres minio
-```
-
-This brings up Postgres on `localhost:5432` (user `garage`, password `garage`, db `garage`) and MinIO on `localhost:9000`.
+Both go into `backend/.env` as `DATABASE_URL` (pooled, used at runtime) and `DIRECT_URL` (used by `prisma migrate`). See `backend/.env.example` for the exact format.
 
 ### 2. Backend
 
 ```bash
 cd backend
-cp .env.example .env                 # then fill in GEMINI_API_KEY when you have one
+cp .env.example .env                  # then paste your Neon URLs
 npm install
-npx prisma migrate dev --name init   # creates the schema in Postgres
+npx prisma migrate dev --name init    # creates the schema on Neon
 npm run dev
 ```
 
@@ -71,8 +68,7 @@ flutter run --dart-define=API_BASE_URL=http://192.168.1.42:3000
 ```
 .
 ├── GARAGE_PROJECT_SPEC.md   ← single source of truth for the design
-├── docker-compose.yml       ← Postgres + MinIO + backend
-├── backend/                 ← Express + TypeScript + Prisma
+├── backend/                 ← Express + TypeScript + Prisma (Postgres on Neon)
 └── mobile/                  ← Flutter (iOS first)
 ```
 

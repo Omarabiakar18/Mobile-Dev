@@ -49,12 +49,13 @@ A Flutter + Node.js app for car owners that tracks fuel, maintenance, and docume
 - **Auth:** JWT access tokens (15min) + refresh tokens (7d) stored in DB so they can be revoked on logout
 - **Password hashing:** bcrypt
 - **File upload:** multer (multipart, 5MB cap, MIME validation: `image/jpeg | image/png | image/heic | application/pdf`)
-- **Storage:** local filesystem in dev (`./uploads/`), MinIO via docker-compose for S3-parity dev option
+- **Storage:** local filesystem (`./uploads/`) for v1
 - **Scheduled jobs:** `node-cron` (nightly recompute of `avgKmPerDay` per car)
 - **Rate limiting:** `express-rate-limit` on `/fuel/ocr` (10/day/user) and `/auth/login` (10/min/IP)
 - **Logging:** `pino` with `pino-http`
 - **LLM:** Google Gemini (`@google/generative-ai`) behind a small `services/llm.ts` interface for swap-ability. Default model: `gemini-1.5-flash` (free tier, fast, low cost). See §16.
-- **Containerization:** Docker + docker-compose (postgres + backend + minio)
+- **Database hosting:** [Neon](https://neon.tech) free tier (pooled + direct URLs in `.env`). No local Postgres install required.
+- **Containerization:** Dockerfile present for prod deploy (Render/Railway), but dev runs natively via `npm run dev` — no Docker required locally.
 
 ### Frontend (Flutter)
 - **Target:** iOS (sideloaded to Omar's iPhone via free Xcode personal team — re-sign within 7 days of demo)
@@ -74,7 +75,8 @@ A Flutter + Node.js app for car owners that tracks fuel, maintenance, and docume
 ### Third-party services
 - **OCR:** Google Cloud Vision API (free tier covers v1 volume; ~1000 calls/month free)
 - **LLM:** Google Gemini API (free tier covers v1 volume; 1M tokens/day, 15 req/min)
-- **Hosting (optional, demo evidence):** Neon free tier for Postgres, Render or Railway free tier for backend. Free.
+- **Postgres:** Neon free tier (default). Pooled URL goes into `DATABASE_URL`, direct URL into `DIRECT_URL`.
+- **Hosting (optional, demo evidence):** Render or Railway free tier for the backend itself. Free.
 
 ---
 
