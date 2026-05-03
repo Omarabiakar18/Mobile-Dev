@@ -26,6 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Garage uses the camera to scan gas station receipts.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Garage uses your location in the background to detect arrivals at gas stations and prompt you to log a fill-up.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Garage uses your location to detect when you're at a gas station so it can prompt you to log a fill-up.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Garage lets you attach photos of receipts and maintenance records.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -49,6 +57,10 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -65,19 +77,6 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Garage uses your location to detect when you're at a gas station so it can prompt you to log a fill-up.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Garage uses your location in the background to detect arrivals at gas stations and prompt you to log a fill-up.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Garage uses the camera to scan gas station receipts.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Garage lets you attach photos of receipts and maintenance records.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-		<string>location</string>
 	</array>
 </dict>
 </plist>

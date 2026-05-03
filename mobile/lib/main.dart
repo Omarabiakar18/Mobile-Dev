@@ -11,25 +11,36 @@ import 'core/notifications/permissions_seen_store.dart';
 import 'features/geofence/services/geofence_service_wrapper.dart';
 
 Future<void> main() async {
+  // Wrap the entire bootstrap in a guarded zone so a plugin failure
+  // (notifications, secure-storage, timezone, geofence native side, etc.)
+  // never prevents `runApp` from being called. The user gets the splash and
+  // then the login screen even when a plugin is broken on the host iOS — the
+  // affected feature gracefully degrades. Without this guard a single iOS
+  // plugin throw kills the whole app on launch.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Build a Riverpod container *before* runApp so the notifications service
-  // can attach its tap stream listener BEFORE the cold-start tap is replayed.
-  // We then hand the same container to ProviderScope.parent so the rest of
-  // the app shares state.
   final container = ProviderContainer();
 
-  // Hydrate the "permissions explainer seen?" flag synchronously-ish so
-  // the router's first redirect can decide whether to send the user to
-  // /permissions on cold start.
-  final seen = await container.read(permissionsSeenStoreProvider).isSeen();
-  container.read(permissionsSeenProvider.notifier).state = seen;
+  // Step 1: hydrate the permissions-explainer flag. If this fails, default
+  // to "not seen" so the user lands on the explainer screen — safe fallback.
+  try {
+    final seen = await container.read(permissionsSeenStoreProvider).isSeen();
+    container.read(permissionsSeenProvider.notifier).state = seen;
+  } catch (e, st) {
+    debugPrint('permissions-seen hydrate failed: $e\n$st');
+  }
 
-  // Initialize the notifications layer. This MUST complete before runApp
-  // so the cold-start tap (if any) is replayed onto the broadcast stream
-  // that the router subscribes to in app.dart.
-  await container.read(notificationsServiceProvider).init();
+  // Step 2: notifications init. We pre-init so cold-start taps replay onto
+  // the listener that app.dart attaches. If the plugin throws on this iOS
+  // build, the app still boots — local notifications just won't fire. Auth
+  // / cars / fuel / OCR / predict still work.
+  try {
+    await container.read(notificationsServiceProvider).init();
+  } catch (e, st) {
+    debugPrint('notifications init failed: $e\n$st');
+  }
 
+  // Step 3: ALWAYS run the app, even if anything above failed.
   runApp(
     UncontrolledProviderScope(
       container: container,
@@ -37,10 +48,7 @@ Future<void> main() async {
     ),
   );
 
-  // Phase 5 — kick off geofence registration once the UI is up. Fire-and-
-  // forget; failure here just means the user won't get auto-arrival prompts
-  // (they can still log fuel manually). Runs after runApp so the splash
-  // doesn't block on a 1–2s location fix.
+  // Step 4: geofence bring-up — fire-and-forget, already wrapped in try/catch.
   unawaited(_bootstrapGeofence(container));
 }
 
