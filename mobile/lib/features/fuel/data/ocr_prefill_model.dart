@@ -5,7 +5,8 @@
 ///     "fields":     { liters, pricePerLiter, totalCost, station, date },
 ///     "confidence": { liters, pricePerLiter, totalCost, station, date },
 ///     "rawText":    string,
-///     "parsedBy":   "llm" | "regex" | "cache" | "demo" | "failed"
+///     "parsedBy":   "llm" | "regex" | "cache" | "demo" | "failed",
+///     "photoUrl":   "/uploads/ocr/HASH.jpg" | null
 ///   }
 ///
 /// Every field value can come back as `number | string | null`; confidences
@@ -16,6 +17,11 @@
 /// `.toString()` them straight into `TextEditingController`s. `date` stays a
 /// `DateTime?` so the form's date picker can pick it up directly. `station`
 /// passes through as a string (whitespace-trimmed).
+///
+/// `receiptPhotoUrl` is the relative URL of the post-preprocess JPEG the
+/// backend served from `/uploads/ocr/<hash>.jpg`. The form passes this URL
+/// through to `POST /cars/:carId/fuel` so the saved fuel entry keeps a
+/// permanent link to the receipt image.
 class OcrPrefill {
   OcrPrefill({
     this.liters,
@@ -23,6 +29,7 @@ class OcrPrefill {
     this.totalCost,
     this.station,
     this.date,
+    this.receiptPhotoUrl,
     required this.confidence,
     required this.rawText,
     required this.parsedBy,
@@ -33,6 +40,7 @@ class OcrPrefill {
   final double? totalCost;
   final String? station;
   final DateTime? date;
+  final String? receiptPhotoUrl;
 
   /// Per-field confidence score in `[0, 1]`. Missing entries are treated as 0.
   final Map<String, double> confidence;
@@ -62,6 +70,7 @@ class OcrPrefill {
       totalCost: _parseDouble(fields['totalCost']),
       station: _parseString(fields['station']),
       date: _parseDate(fields['date']),
+      receiptPhotoUrl: _parseString(j['photoUrl']),
       confidence: {
         for (final k in const [
           'liters',

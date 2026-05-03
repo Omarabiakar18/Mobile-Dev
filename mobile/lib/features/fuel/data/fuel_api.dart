@@ -57,6 +57,7 @@ class FuelApi {
     double? latitude,
     double? longitude,
     String? notes,
+    String? receiptPhotoUrl,
   }) async {
     try {
       final r = await _client.dio.post<Map<String, dynamic>>(
@@ -73,6 +74,8 @@ class FuelApi {
           'latitude': ?latitude,
           'longitude': ?longitude,
           if (notes != null && notes.isNotEmpty) 'notes': notes,
+          if (receiptPhotoUrl != null && receiptPhotoUrl.isNotEmpty)
+            'receiptPhotoUrl': receiptPhotoUrl,
         },
       );
       return FuelEntry.fromJson(

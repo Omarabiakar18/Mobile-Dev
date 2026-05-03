@@ -20,10 +20,16 @@ export type OcrQuery = z.infer<typeof ocrQuerySchema>;
  * Response shape returned to Flutter. Stable contract — see Phase 4 task
  * report. `parsedBy` lets the client render the right loader (cache hit is
  * instant; demo is hardcoded; failed means open an empty form).
+ *
+ * `photoUrl` is the public path of the post-preprocess JPEG that was used
+ * for OCR. Flutter passes this URL through to `POST /cars/:carId/fuel` so
+ * the saved fuel entry keeps a permanent link to the receipt image. `null`
+ * on demo / failed paths since there's no real photo to surface.
  */
 export interface OcrResponse {
   fields: ParsedFields;
   confidence: FieldConfidence;
   rawText: string;
   parsedBy: 'llm' | 'regex' | 'cache' | 'demo' | 'failed';
+  photoUrl: string | null;
 }

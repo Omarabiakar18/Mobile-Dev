@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/api/base_url.dart';
 import '../../cars/data/car_model.dart';
 import '../../cars/data/cars_api.dart';
 import '../data/fuel_api.dart';
@@ -125,6 +127,10 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
             station: _station.text.trim().isEmpty ? null : _station.text.trim(),
             isFullTank: _isFullTank,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            // Persist the receipt photo URL the OCR endpoint surfaced. The
+            // backend served it from /uploads/ocr/<hash>.jpg; saving it here
+            // means the fuel entry keeps a permanent link to the receipt.
+            receiptPhotoUrl: widget.ocrPrefill?.receiptPhotoUrl,
           );
       ref.invalidate(fuelListProvider(widget.carId));
       if (mounted) context.pop();
@@ -171,6 +177,8 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (ocr?.receiptPhotoUrl != null)
+                  _ReceiptThumbnail(relativeUrl: ocr!.receiptPhotoUrl!),
                 if (hasLowConfidence) _LowConfidenceBanner(theme: theme),
                 _DatePickerField(
                   date: _date,
@@ -462,6 +470,67 @@ class _Field extends StatelessWidget {
         validator: validator,
         maxLines: maxLines,
         onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+/// Small preview of the OCR'd receipt rendered at the top of the form.
+/// Caps the height at 160px and uses a rounded clip so it sits well above the
+/// existing fields. The URL is the relative path emitted by the OCR endpoint
+/// (e.g. `/uploads/ocr/<hash>.jpg`); we prefix with [apiBaseUrl] here so the
+/// raw payload from the backend doesn't need to know about the deployment
+/// host.
+class _ReceiptThumbnail extends StatelessWidget {
+  const _ReceiptThumbnail({required this.relativeUrl});
+
+  final String relativeUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fullUrl = relativeUrl.startsWith('http')
+        ? relativeUrl
+        : '$apiBaseUrl$relativeUrl';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 160),
+          child: CachedNetworkImage(
+            imageUrl: fullUrl,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            placeholder: (_, _) => Container(
+              height: 160,
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: const Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+            errorWidget: (_, _, _) => Container(
+              height: 80,
+              color: theme.colorScheme.surfaceContainerHighest,
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.image_not_supported_outlined,
+                      color: theme.colorScheme.outline),
+                  const SizedBox(width: 8),
+                  Text('Receipt preview unavailable',
+                      style: TextStyle(color: theme.colorScheme.outline)),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

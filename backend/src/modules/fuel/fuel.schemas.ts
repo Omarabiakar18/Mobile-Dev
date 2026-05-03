@@ -14,6 +14,11 @@ export const createFuelSchema = z.object({
   latitude: z.coerce.number().min(-90).max(90).optional(),
   longitude: z.coerce.number().min(-180).max(180).optional(),
   notes: z.string().max(1000).optional(),
+  // Receipt-photo persistence (Phase 6 polish). The OCR endpoint returns
+  // `photoUrl: "/uploads/ocr/<hash>.jpg"` and the mobile client passes it
+  // back here so the saved fuel entry keeps a permanent link to the receipt
+  // image. Capped at 2KB so the column can't be abused.
+  receiptPhotoUrl: z.string().max(2048).optional(),
 });
 
 export const updateFuelSchema = createFuelSchema.partial();

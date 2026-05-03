@@ -124,6 +124,7 @@ export async function extractFuelFields(
       confidence: { ...DEMO_CONFIDENCE },
       rawText: '[demo-mode] hardcoded receipt fields',
       parsedBy: 'demo',
+      photoUrl: null,
     };
   }
 
@@ -140,9 +141,14 @@ export async function extractFuelFields(
       confidence: { ...ZERO_CONFIDENCE },
       rawText: '',
       parsedBy: 'failed',
+      photoUrl: null,
     };
   }
   const hash = hashBuffer(processed);
+  // Build the public URL once. The static-file middleware in `index.ts`
+  // serves `<UPLOADS_DIR>` at `/uploads`, so any file we drop under
+  // `<UPLOADS_DIR>/ocr/<hash>.jpg` is reachable at this path.
+  const photoUrl = `/uploads/ocr/${hash}.jpg`;
 
   // 3. Cache check.
   if (!options.force) {
@@ -154,6 +160,7 @@ export async function extractFuelFields(
         confidence: cached.confidence as unknown as FieldConfidence,
         rawText: cached.rawText,
         parsedBy: 'cache',
+        photoUrl,
       };
     }
   }
@@ -168,11 +175,15 @@ export async function extractFuelFields(
     parsed = await parseFieldsFromImageWithLlm(processed, 'image/jpeg');
   } catch (err) {
     logger.warn({ err }, 'Gemini multimodal OCR failed; returning empty fields');
+    // Even on LLM failure the photo IS on disk (saveProcessedImage above
+    // succeeded), so we still hand back the URL — the user can review the
+    // image manually in the form even if the fields couldn't be extracted.
     return {
       fields: { ...EMPTY_FIELDS },
       confidence: { ...ZERO_CONFIDENCE },
       rawText: '',
       parsedBy: 'failed',
+      photoUrl,
     };
   }
 
@@ -199,5 +210,6 @@ export async function extractFuelFields(
     confidence: parsed.confidence,
     rawText: '',
     parsedBy: 'llm',
+    photoUrl,
   };
 }

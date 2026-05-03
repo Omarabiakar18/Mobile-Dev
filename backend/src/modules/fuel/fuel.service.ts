@@ -63,6 +63,7 @@ export async function create(userId: string, carId: string, input: CreateFuelInp
         latitude: input.latitude ?? null,
         longitude: input.longitude ?? null,
         notes: input.notes ?? null,
+        receiptPhotoUrl: input.receiptPhotoUrl ?? null,
       },
     });
     await recomputeAvgKmPerDay(carId, tx);
@@ -88,6 +89,8 @@ export async function update(userId: string, fuelId: string, input: UpdateFuelIn
   if (input.latitude !== undefined) data.latitude = input.latitude;
   if (input.longitude !== undefined) data.longitude = input.longitude;
   if (input.notes !== undefined) data.notes = input.notes;
+  if (input.receiptPhotoUrl !== undefined)
+    data.receiptPhotoUrl = input.receiptPhotoUrl;
 
   return prisma.$transaction(async (tx) => {
     const entry = await tx.fuelEntry.update({ where: { id: fuelId }, data });
