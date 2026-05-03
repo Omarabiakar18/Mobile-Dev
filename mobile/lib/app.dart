@@ -11,8 +11,10 @@ import 'features/cars/presentation/car_detail_screen.dart';
 import 'features/cars/presentation/cars_list_screen.dart';
 import 'features/documents/presentation/add_document_screen.dart';
 import 'features/documents/presentation/documents_list_screen.dart';
+import 'features/fuel/data/ocr_prefill_model.dart';
 import 'features/fuel/presentation/add_fuel_screen.dart';
 import 'features/fuel/presentation/fuel_stats_screen.dart';
+import 'features/fuel/presentation/ocr_camera_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/splash_screen.dart';
 import 'features/maintenance/presentation/add_maintenance_screen.dart';
@@ -70,10 +72,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => CarDetailScreen(carId: state.pathParameters['id']!),
       ),
 
-      // Phase 2 — fuel
+      // Phase 2 — fuel. `extra` (Phase 4) optionally carries an `OcrPrefill`
+      // so the OCR camera flow can populate the form before the user verifies.
       GoRoute(
         path: '/cars/:id/fuel/new',
-        builder: (_, state) => AddFuelScreen(carId: state.pathParameters['id']!),
+        builder: (_, state) => AddFuelScreen(
+          carId: state.pathParameters['id']!,
+          ocrPrefill: state.extra is OcrPrefill
+              ? state.extra as OcrPrefill
+              : null,
+        ),
       ),
 
       // Phase 3 — fuel stats screen
@@ -81,6 +89,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/cars/:id/fuel/stats',
         builder: (_, state) =>
             FuelStatsScreen(carId: state.pathParameters['id']!),
+      ),
+
+      // Phase 4 — receipt OCR camera flow. Lands on the OCR screen, which
+      // pushes the user forward to `/fuel/new` with an `OcrPrefill` extra.
+      GoRoute(
+        path: '/cars/:id/fuel/scan',
+        builder: (_, state) =>
+            OcrCameraScreen(carId: state.pathParameters['id']!),
       ),
 
       // Phase 2 — maintenance

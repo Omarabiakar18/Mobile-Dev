@@ -21,6 +21,7 @@ import {
   carScopedRemindersRouter,
   remindersByIdRouter,
 } from './modules/reminders/reminders.routes';
+import { ocrRouter } from './modules/ocr/ocr.routes';
 import { startAvgKmPerDayCron } from './jobs/avg-km-per-day.cron';
 
 async function main() {
@@ -41,6 +42,11 @@ async function main() {
   app.use('/users', usersRouter);
   app.use('/cars', carsRouter);
 
+  // Phase 4: OCR router. MUST be mounted BEFORE `carScopedFuelRouter` so the
+  // more specific `/fuel/ocr` prefix wins over `/fuel`. (Express picks the
+  // first matching mount in registration order.)
+  app.use('/cars/:carId/fuel/ocr', ocrRouter);
+
   // Phase 2: car-scoped sub-resources. Order matters — these must come AFTER
   // `/cars` so the cars router doesn't intercept e.g. `/cars/:id/fuel`.
   app.use('/cars/:carId', carScopedFuelRouter);
@@ -60,7 +66,6 @@ async function main() {
     express.static(path.resolve(env.UPLOADS_DIR), { fallthrough: false, maxAge: '7d' }),
   );
 
-  // TODO(phase 4): mount ocr routes
   // TODO(phase 5): mount gas-stations routes
 
   // 404 + error handlers (must come last)

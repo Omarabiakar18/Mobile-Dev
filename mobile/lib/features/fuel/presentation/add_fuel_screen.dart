@@ -8,10 +8,22 @@ import '../../../core/api/api_exception.dart';
 import '../../cars/data/car_model.dart';
 import '../../cars/data/cars_api.dart';
 import '../data/fuel_api.dart';
+import '../data/ocr_prefill_model.dart';
+
+/// Confidence threshold under which we tint a field's border orange and
+/// show the "verify these" banner. The OCR pipeline tends to be highly
+/// confident (≥0.9) on clean numeric fields, so 0.7 is a safe "not sure" cut.
+const double _kLowConfidenceThreshold = 0.7;
 
 class AddFuelScreen extends ConsumerStatefulWidget {
-  const AddFuelScreen({super.key, required this.carId});
+  const AddFuelScreen({super.key, required this.carId, this.ocrPrefill});
+
   final String carId;
+
+  /// Optional OCR-extracted fields. When non-null, the form initializes its
+  /// controllers from this payload and visually flags low-confidence values
+  /// in orange. The user must still tap Save — OCR never auto-saves.
+  final OcrPrefill? ocrPrefill;
 
   @override
   ConsumerState<AddFuelScreen> createState() => _AddFuelScreenState();
@@ -40,6 +52,7 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
     super.initState();
     _liters.addListener(_recomputeTotal);
     _pricePerLiter.addListener(_recomputeTotal);
+    _applyOcrPrefill();
   }
 
   @override
@@ -60,6 +73,21 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
     _prefilled = true;
     _odometer.text = car.currentKm.toString();
     _fuelType = car.fuelType;
+  }
+
+  /// Seed the controllers from an OCR payload (if any was passed in via
+  /// go_router). Numeric fields use a tight `toStringAsFixed` so the form
+  /// doesn't render `45.0000000001` from a JSON-decoded double.
+  void _applyOcrPrefill() {
+    final p = widget.ocrPrefill;
+    if (p == null) return;
+    if (p.liters != null) _liters.text = _formatNum(p.liters!);
+    if (p.pricePerLiter != null) {
+      _pricePerLiter.text = _formatNum(p.pricePerLiter!);
+    }
+    if (p.totalCost != null) _totalCost.text = _formatNum(p.totalCost!);
+    if (p.station != null) _station.text = p.station!;
+    if (p.date != null) _date = p.date!;
   }
 
   void _recomputeTotal() {
@@ -126,6 +154,13 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
       if (car != null) _prefillFromCar(car);
     });
 
+    final theme = Theme.of(context);
+    final ocr = widget.ocrPrefill;
+    final hasLowConfidence = ocr != null &&
+        const ['liters', 'pricePerLiter', 'totalCost', 'station', 'date']
+            .any((f) => ocr.confidenceFor(f) > 0 &&
+                ocr.confidenceFor(f) < _kLowConfidenceThreshold);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Log fuel')),
       body: SafeArea(
@@ -136,7 +171,12 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _DatePickerField(date: _date, onTap: _pickDate),
+                if (hasLowConfidence) _LowConfidenceBanner(theme: theme),
+                _DatePickerField(
+                  date: _date,
+                  onTap: _pickDate,
+                  confidence: ocr?.confidenceFor('date'),
+                ),
                 _Field(
                   controller: _odometer,
                   label: 'Odometer (km)',
@@ -158,6 +198,7 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
                           FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                         ],
                         validator: _positive,
+                        confidence: ocr?.confidenceFor('liters'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -172,6 +213,7 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
                           FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                         ],
                         validator: _positive,
+                        confidence: ocr?.confidenceFor('pricePerLiter'),
                       ),
                     ),
                   ],
@@ -187,6 +229,7 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                   ],
                   validator: _positive,
+                  confidence: ocr?.confidenceFor('totalCost'),
                   onChanged: (_) {
                     // User edited it directly — stop auto-filling.
                     if (!_autoFillingTotal) {
@@ -227,6 +270,7 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
                   controller: _station,
                   label: 'Station (optional)',
                   hint: 'e.g. Total Jounieh',
+                  confidence: ocr?.confidenceFor('station'),
                 ),
                 _Field(
                   controller: _notes,
@@ -258,23 +302,114 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
     if (n <= 0) return 'Must be > 0';
     return null;
   }
+
+  /// Human-friendly numeric formatting for OCR prefill: drops trailing zeros
+  /// so `45.0` renders as `45` and `45.20` as `45.2`.
+  static String _formatNum(double v) {
+    if (v == v.roundToDouble()) return v.toStringAsFixed(0);
+    final s = v.toStringAsFixed(2);
+    return s.endsWith('0') ? s.substring(0, s.length - 1) : s;
+  }
 }
 
-class _DatePickerField extends StatelessWidget {
-  const _DatePickerField({required this.date, required this.onTap});
-  final DateTime date;
-  final VoidCallback onTap;
+/// Returns an `InputDecoration` whose border is tinted orange when the
+/// supplied confidence is below [_kLowConfidenceThreshold]. Returns the
+/// theme's default decoration when [confidence] is null (no OCR) or high.
+InputDecoration _confidenceBorder(
+  ThemeData theme,
+  double? confidence, {
+  required String label,
+  String? hint,
+  Widget? suffixIcon,
+}) {
+  final base = InputDecoration(
+    labelText: label,
+    hintText: hint,
+    suffixIcon: suffixIcon,
+  );
+  if (confidence == null || confidence >= _kLowConfidenceThreshold) {
+    return base;
+  }
+  // Orange holds up well in both light and dark schemes — and survives the
+  // form being read at arm's length on a phone in daylight.
+  const orange = Color(0xFFE08017);
+  return base.copyWith(
+    enabledBorder: const OutlineInputBorder(
+      borderSide: BorderSide(color: orange, width: 1.4),
+    ),
+    focusedBorder: const OutlineInputBorder(
+      borderSide: BorderSide(color: orange, width: 2),
+    ),
+    border: const OutlineInputBorder(
+      borderSide: BorderSide(color: orange),
+    ),
+    suffixIcon: suffixIcon ??
+        const Tooltip(
+          message: 'Low OCR confidence — please verify',
+          child: Icon(Icons.warning_amber_rounded, color: orange),
+        ),
+    helperText: 'Verify',
+    helperStyle: const TextStyle(color: orange, fontSize: 11),
+  );
+}
+
+class _LowConfidenceBanner extends StatelessWidget {
+  const _LowConfidenceBanner({required this.theme});
+  final ThemeData theme;
 
   @override
   Widget build(BuildContext context) {
+    const orange = Color(0xFFE08017);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: orange.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: orange.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: orange, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Fields highlighted in orange were uncertain — please verify.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DatePickerField extends StatelessWidget {
+  const _DatePickerField({
+    required this.date,
+    required this.onTap,
+    this.confidence,
+  });
+  final DateTime date;
+  final VoidCallback onTap;
+  final double? confidence;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: onTap,
         child: InputDecorator(
-          decoration: const InputDecoration(
-            labelText: 'Date',
-            suffixIcon: Icon(Icons.calendar_today),
+          decoration: _confidenceBorder(
+            theme,
+            confidence,
+            label: 'Date',
+            suffixIcon: const Icon(Icons.calendar_today),
           ),
           child: Text(DateFormat.yMMMd().format(date)),
         ),
@@ -293,6 +428,7 @@ class _Field extends StatelessWidget {
     this.formatters,
     this.maxLines = 1,
     this.onChanged,
+    this.confidence,
   });
 
   final TextEditingController controller;
@@ -304,15 +440,25 @@ class _Field extends StatelessWidget {
   final int maxLines;
   final ValueChanged<String>? onChanged;
 
+  /// `null` when the form isn't OCR-prefilled; `0..1` otherwise. Below the
+  /// threshold the field renders an orange border + warning icon.
+  final double? confidence;
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboardType,
         inputFormatters: formatters,
-        decoration: InputDecoration(labelText: label, hintText: hint),
+        decoration: _confidenceBorder(
+          theme,
+          confidence,
+          label: label,
+          hint: hint,
+        ),
         validator: validator,
         maxLines: maxLines,
         onChanged: onChanged,

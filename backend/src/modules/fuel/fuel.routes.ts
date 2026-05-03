@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 
 import { asyncHandler } from '../../lib/asyncHandler';
 import { ok } from '../../lib/respond';
@@ -6,6 +7,7 @@ import { validateBody } from '../../lib/validate';
 import { requireAuth } from '../../middleware/auth';
 
 import * as fuelService from './fuel.service';
+import * as fuelExplainService from './fuel.explain.service';
 import {
   createFuelSchema,
   listQuerySchema,
@@ -59,6 +61,32 @@ carScopedFuelRouter.get(
   '/fuel/predict-next',
   asyncHandler(async (req, res) => {
     const result = await fuelService.predictNext(req.userId!, req.params.carId);
+    ok(res, result);
+  }),
+);
+
+/**
+ * §16-C — "Explain this prediction" endpoint. Per-route rate-limit of
+ * 30/day/user (spec §16 cost guard). The keyGenerator pins the bucket to
+ * `req.userId` (set by `requireAuth` upstream) instead of the default IP
+ * key — multiple users behind one NAT shouldn't share a budget.
+ */
+const explainLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => req.userId ?? req.ip ?? 'anon',
+});
+
+carScopedFuelRouter.get(
+  '/fuel/predict-next/explain',
+  explainLimiter,
+  asyncHandler(async (req, res) => {
+    const result = await fuelExplainService.explainPredictNext(
+      req.userId!,
+      req.params.carId,
+    );
     ok(res, result);
   }),
 );

@@ -601,84 +601,240 @@ class _OkCard extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetCtx) {
-        final theme = Theme.of(sheetCtx);
-        final consumption = prediction.consumptionPer100km;
-        final kmSince = prediction.kmSinceLastFull;
-        final pace = car.avgKmPerDay;
-
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('How we got this number',
-                    style: theme.textTheme.titleLarge),
-                const SizedBox(height: 12),
-                if (consumption != null)
-                  _ExplainRow(
-                    icon: Icons.speed_outlined,
-                    label: 'Avg consumption',
-                    value: '${consumption.toStringAsFixed(1)} L/100km',
-                  ),
-                if (kmSince != null)
-                  _ExplainRow(
-                    icon: Icons.route_outlined,
-                    label: 'Driven since last full tank',
-                    value: '$kmSince km',
-                  ),
-                if (pace != null)
-                  _ExplainRow(
-                    icon: Icons.directions_car_outlined,
-                    label: 'Daily pace',
-                    value: '${pace.toStringAsFixed(0)} km/day',
-                  ),
-                if (prediction.tankRemainingLiters != null)
-                  _ExplainRow(
-                    icon: Icons.local_gas_station_outlined,
-                    label: 'Tank remaining',
-                    value:
-                        '${prediction.tankRemainingLiters!.toStringAsFixed(1)} L',
-                  ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.secondaryContainer,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  // TODO(phase4 §16-C): replace this static note with the LLM
-                  // explanation from `GET /cars/:carId/fuel/predict-next/explain`.
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.auto_awesome_outlined,
-                        size: 18,
-                        color: theme.colorScheme.onSecondaryContainer,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'These numbers come from your fuel entries. '
-                          'AI explanation lands in Phase 4.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSecondaryContainer,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+        return _ExplainSheet(car: car, prediction: prediction);
       },
     );
   }
+}
+
+/// Body of the "explain this prediction" bottom sheet (spec §16-C).
+///
+/// The sheet renders three sections:
+///   - The deterministic numeric breakdown (always visible).
+///   - The async LLM explanation: spinner / fallback copy / live text.
+///   - A small caption indicating provenance ("Powered by AI" vs.
+///     "Pre-computed explanation") and a relative timestamp.
+class _ExplainSheet extends ConsumerWidget {
+  const _ExplainSheet({required this.car, required this.prediction});
+  final Car car;
+  final FuelPrediction prediction;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final consumption = prediction.consumptionPer100km;
+    final kmSince = prediction.kmSinceLastFull;
+    final pace = car.avgKmPerDay;
+    final explainAsync = ref.watch(predictExplainProvider(car.id));
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('How we got this number', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 12),
+            if (consumption != null)
+              _ExplainRow(
+                icon: Icons.speed_outlined,
+                label: 'Avg consumption',
+                value: '${consumption.toStringAsFixed(1)} L/100km',
+              ),
+            if (kmSince != null)
+              _ExplainRow(
+                icon: Icons.route_outlined,
+                label: 'Driven since last full tank',
+                value: '$kmSince km',
+              ),
+            if (pace != null)
+              _ExplainRow(
+                icon: Icons.directions_car_outlined,
+                label: 'Daily pace',
+                value: '${pace.toStringAsFixed(0)} km/day',
+              ),
+            if (prediction.tankRemainingLiters != null)
+              _ExplainRow(
+                icon: Icons.local_gas_station_outlined,
+                label: 'Tank remaining',
+                value:
+                    '${prediction.tankRemainingLiters!.toStringAsFixed(1)} L',
+              ),
+            const SizedBox(height: 16),
+            _ExplainBox(
+              theme: theme,
+              child: explainAsync.when(
+                loading: () => _ExplainLoading(theme: theme),
+                error: (_, _) => _ExplainError(
+                  theme: theme,
+                  onRetry: () =>
+                      ref.invalidate(predictExplainProvider(car.id)),
+                ),
+                data: (e) => _ExplainBody(theme: theme, payload: e),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tinted container wrapping the LLM explanation block. Pulled out so the
+/// loading / error / data states share the same chrome.
+class _ExplainBox extends StatelessWidget {
+  const _ExplainBox({required this.theme, required this.child});
+  final ThemeData theme;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ExplainLoading extends StatelessWidget {
+  const _ExplainLoading({required this.theme});
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = theme.colorScheme.onSecondaryContainer;
+    return Row(
+      children: [
+        SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2, color: fg),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          'Asking the assistant…',
+          style: theme.textTheme.bodySmall?.copyWith(color: fg),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExplainError extends StatelessWidget {
+  const _ExplainError({required this.theme, required this.onRetry});
+  final ThemeData theme;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = theme.colorScheme.onSecondaryContainer;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.auto_awesome_outlined, size: 18, color: fg),
+            const SizedBox(width: 8),
+            // Fallback copy mirrors the original Phase 3 placeholder so the
+            // sheet still tells a coherent story when the LLM endpoint is
+            // unreachable.
+            Expanded(
+              child: Text(
+                'These numbers come from your fuel entries.',
+                style: theme.textTheme.bodySmall?.copyWith(color: fg),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(foregroundColor: fg),
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('Retry'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExplainBody extends StatelessWidget {
+  const _ExplainBody({required this.theme, required this.payload});
+  final ThemeData theme;
+  final PredictExplain payload;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = theme.colorScheme.onSecondaryContainer;
+    final caption = payload.parsedBy == 'llm'
+        ? 'Powered by AI'
+        : 'Pre-computed explanation';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.auto_awesome_outlined, size: 18, color: fg),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                payload.explanation.isEmpty
+                    ? 'These numbers come from your fuel entries.'
+                    : payload.explanation,
+                style: theme.textTheme.bodySmall?.copyWith(color: fg),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '$caption · ${_relativeTime(payload.generatedAt)}',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: fg.withValues(alpha: 0.7),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Compact relative-time formatter for the explainer's "generated at" line.
+///
+/// Keeps things human:
+///   - <60s     → "just now"
+///   - <60m     → "5 minutes ago"
+///   - <24h     → "3 hours ago"
+///   - otherwise → "2 days ago"
+///
+/// We do this inline rather than pulling in `timeago` because the dependency
+/// list is already on the heavy side and this is the only call site.
+String _relativeTime(DateTime when) {
+  final diff = DateTime.now().difference(when);
+  if (diff.isNegative) return 'just now';
+  if (diff.inSeconds < 60) return 'just now';
+  if (diff.inMinutes < 60) {
+    final m = diff.inMinutes;
+    return m == 1 ? '1 minute ago' : '$m minutes ago';
+  }
+  if (diff.inHours < 24) {
+    final h = diff.inHours;
+    return h == 1 ? '1 hour ago' : '$h hours ago';
+  }
+  final d = diff.inDays;
+  return d == 1 ? '1 day ago' : '$d days ago';
 }
 
 class _ExplainRow extends StatelessWidget {
@@ -744,8 +900,7 @@ class _QuickActions extends StatelessWidget {
           child: _ActionTile(
             icon: Icons.document_scanner_outlined,
             label: 'Scan receipt',
-            disabledMessage: 'Coming in Phase 4',
-            onTap: null,
+            onTap: () => context.push('/cars/$carId/fuel/scan'),
           ),
         ),
       ],
@@ -758,13 +913,11 @@ class _ActionTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.disabledMessage,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  final String? disabledMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -776,16 +929,6 @@ class _ActionTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        onLongPress: disabledMessage == null
-            ? null
-            : () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(disabledMessage!),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
           child: Column(

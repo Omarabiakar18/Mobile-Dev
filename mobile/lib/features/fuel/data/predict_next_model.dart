@@ -100,3 +100,35 @@ class FuelPrediction {
     return double.tryParse(v.toString()) ?? 0;
   }
 }
+
+/// Response shape of `GET /cars/:carId/fuel/predict-next/explain` (spec §16-C).
+///
+/// `parsedBy` distinguishes a live LLM response from a deterministic fallback
+/// (template) or demo-mode payload. The home dashboard's bottom sheet uses it
+/// to label the explanation appropriately ("Powered by AI" vs. "Pre-computed").
+class PredictExplain {
+  PredictExplain({
+    required this.explanation,
+    required this.parsedBy,
+    required this.generatedAt,
+  });
+
+  final String explanation;
+
+  /// One of `"llm" | "fallback" | "demo"`. We keep the raw string instead of
+  /// an enum so an unexpected value from the backend doesn't crash the parse —
+  /// the UI just falls through to the generic "Pre-computed" caption.
+  final String parsedBy;
+
+  final DateTime generatedAt;
+
+  factory PredictExplain.fromJson(Map<String, dynamic> j) => PredictExplain(
+        explanation: (j['explanation'] as String?)?.trim() ?? '',
+        parsedBy: (j['parsedBy'] as String?) ?? 'fallback',
+        // Lenient on the timestamp: if the backend forgets to send one, fall
+        // back to "now" rather than failing the whole bottom sheet.
+        generatedAt: j['generatedAt'] == null
+            ? DateTime.now()
+            : DateTime.tryParse(j['generatedAt'] as String) ?? DateTime.now(),
+      );
+}

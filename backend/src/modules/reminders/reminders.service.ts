@@ -2,10 +2,23 @@ import type { Car, ServiceReminder } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma';
 import { ForbiddenError, NotFoundError } from '../../lib/errors';
+import { llm, llmOrFallback } from '../../services/llm';
 import { assertOwnsCar } from '../cars/cars.service';
 import type { CreateReminderInput, UpdateReminderInput } from './reminders.schemas';
 
 const MS_PER_DAY = 86_400_000;
+/**
+ * Trade-off (spec §16-B): the spec says "recompute when predictedDate shifts"
+ * but the schema doesn't store a predictedDate snapshot, so we use a 7-day
+ * staleness heuristic instead. avgKmPerDay only meaningfully shifts after
+ * several new fuel entries (which take days), so a week of cached phrasing
+ * stays accurate without paying for the LLM on every dashboard refresh. If
+ * the cache is missing entirely (`aiMessage IS NULL`) we always regenerate.
+ */
+const AI_MESSAGE_MAX_AGE_MS = 7 * MS_PER_DAY;
+
+const REMINDER_SYSTEM_PROMPT =
+  'You write friendly, factual one-sentence service reminders for a car owner. Use ONLY the numbers provided — do not invent any. Do not give specific repair cost estimates. Aim for ~20 words. Conversational but practical.';
 
 /**
  * Verifies the reminder exists and the car it belongs to is owned by `userId`.
@@ -95,6 +108,48 @@ export function projectNextDate(
 }
 
 /**
+ * Spec §16-B prompt template — pure function, exported so the verification
+ * script can hit it without spinning up an LLM client. Numbers are formatted
+ * lightly (km as integers, dates as `YYYY-MM-DD`, avg with one decimal) so
+ * the model never has to round long floats.
+ */
+export function buildReminderPrompt(
+  reminder: Pick<
+    ServiceReminder,
+    'serviceType' | 'lastDoneKm' | 'lastDoneDate'
+  >,
+  car: Pick<Car, 'make' | 'model' | 'year' | 'currentKm' | 'avgKmPerDay'>,
+  projection: { predictedDate: Date; daysRemaining: number },
+): string {
+  const avg = car.avgKmPerDay == null ? 0 : Number(car.avgKmPerDay.toString());
+  const avgRounded = Math.round(avg * 10) / 10;
+  const predictedDateIso = projection.predictedDate.toISOString().slice(0, 10);
+  const lastDoneDateIso = new Date(reminder.lastDoneDate).toISOString().slice(0, 10);
+
+  return [
+    `Car: ${car.year} ${car.make} ${car.model}, currently at ${car.currentKm} km.`,
+    `Service: ${reminder.serviceType}.`,
+    `Last done: ${reminder.lastDoneKm} km on ${lastDoneDateIso}.`,
+    `Predicted next: ${predictedDateIso} (${projection.daysRemaining} days from today).`,
+    `Driving pace: ${avgRounded} km/day.`,
+  ].join('\n');
+}
+
+/**
+ * Hardcoded fallback string used when the LLM call fails or `DEMO_MODE=true`.
+ * Matches the spec §16-B wording verbatim so the demo and the LLM output read
+ * similarly enough that a viewer can't tell the difference at a glance.
+ */
+export function fallbackReminderMessage(
+  serviceType: string,
+  daysRemaining: number,
+  predictedDate: Date,
+): string {
+  const iso = predictedDate.toISOString().slice(0, 10);
+  return `${serviceType} due in ${daysRemaining} days (~${iso})`;
+}
+
+/**
  * Lists all reminders for a car the user owns. Ordering matches the spec:
  * date-based first when `intervalMonths` is set, falling back to km-based.
  */
@@ -168,8 +223,15 @@ export async function remove(userId: string, reminderId: string) {
 
 /**
  * Active reminders whose projected date falls within `withinDays` from now.
- * Each row is enriched with `predictedDate`, `daysRemaining`, and `aiMessage`
- * (which is null in Phase 2 — §16-B will populate it in Phase 4).
+ * Each row is enriched with `predictedDate`, `daysRemaining`, and a
+ * non-null `aiMessage` (§16-B). The message is either:
+ *   - the cached `aiMessage` on the row when fresh enough (<7d old), OR
+ *   - a fresh LLM-generated sentence (cached back to the row), OR
+ *   - the deterministic fallback template (NOT written back — see comment
+ *     in the inner async block).
+ *
+ * Per-reminder LLM calls run in parallel via Promise.all so 5 stale rows
+ * don't serialize into a 5-second response.
  */
 export async function due(userId: string, carId: string, withinDays: number) {
   const car = await assertOwnsCar(userId, carId);
@@ -183,16 +245,83 @@ export async function due(userId: string, carId: string, withinDays: number) {
   type Enriched = ServiceReminder & {
     predictedDate: Date;
     daysRemaining: number;
+    aiMessage: string;
   };
 
-  const enriched: Enriched[] = [];
+  // First pass: compute projections + decide which rows need a fresh LLM call.
+  const candidates: {
+    reminder: ServiceReminder;
+    projection: { predictedDate: Date; daysRemaining: number };
+    cacheFresh: boolean;
+  }[] = [];
+
   for (const r of all) {
     const proj = projectNextDate(r, car, now);
     if (!proj) continue;
     const delta = proj.predictedDate.getTime() - now.getTime();
     if (delta > horizon) continue;
-    enriched.push({ ...r, ...proj });
+    const cacheFresh =
+      r.aiMessage != null &&
+      r.aiMessageGeneratedAt != null &&
+      now.getTime() - r.aiMessageGeneratedAt.getTime() < AI_MESSAGE_MAX_AGE_MS;
+    candidates.push({ reminder: r, projection: proj, cacheFresh });
   }
+
+  // Second pass: resolve aiMessage for each row in parallel. Cached rows
+  // resolve synchronously; stale rows go through llmOrFallback, which honors
+  // DEMO_MODE and falls back to the template on any LLM failure.
+  const enriched: Enriched[] = await Promise.all(
+    candidates.map(async ({ reminder, projection, cacheFresh }) => {
+      let aiMessage: string;
+
+      if (cacheFresh && reminder.aiMessage) {
+        aiMessage = reminder.aiMessage;
+      } else {
+        const prompt = buildReminderPrompt(reminder, car, projection);
+        const result = await llmOrFallback(
+          () =>
+            llm().text(prompt, {
+              temperature: 0.3,
+              maxTokens: 60,
+              systemPrompt: REMINDER_SYSTEM_PROMPT,
+            }),
+          () =>
+            fallbackReminderMessage(
+              reminder.serviceType,
+              projection.daysRemaining,
+              projection.predictedDate,
+            ),
+        );
+
+        // Strip whitespace + a trailing period-less newline the model often
+        // emits, but otherwise trust the model.
+        aiMessage = result.value.trim();
+
+        // Only write back when the LLM was actually used. Leaving aiMessage
+        // null on fallback keeps the cache invariant: "non-null aiMessage =
+        // an LLM has blessed this string at some point" (matches the §16-B
+        // spec note about the demo/fallback path).
+        if (result.usedLlm) {
+          // Fire-and-forget the writeback — it's a cache update, not part of
+          // the response contract. We still await it inside Promise.all so
+          // the connection isn't dropped before Prisma flushes, but we
+          // swallow errors so a transient DB write failure doesn't poison
+          // the /due response.
+          try {
+            await prisma.serviceReminder.update({
+              where: { id: reminder.id },
+              data: { aiMessage, aiMessageGeneratedAt: now },
+            });
+          } catch {
+            // best-effort cache write
+          }
+        }
+      }
+
+      return { ...reminder, ...projection, aiMessage };
+    }),
+  );
+
   enriched.sort(
     (a, b) => a.predictedDate.getTime() - b.predictedDate.getTime(),
   );

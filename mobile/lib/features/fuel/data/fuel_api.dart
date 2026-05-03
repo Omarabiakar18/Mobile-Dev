@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/api/dio_client.dart';
 import '../../cars/data/car_model.dart';
 import 'fuel_model.dart';
+import 'ocr_prefill_model.dart';
 import 'predict_next_model.dart';
 
 class FuelApi {
@@ -127,6 +130,52 @@ class FuelApi {
       throw ApiException.fromDio(e);
     }
   }
+
+  /// Plain-English explanation of the predict-next math (spec §16-C).
+  /// Only called on demand when the user taps the predict card — never on
+  /// the dashboard's main load — so cost stays inside the LLM rate-limit.
+  Future<PredictExplain> predictNextExplain(String carId) async {
+    try {
+      final r = await _client.dio.get<Map<String, dynamic>>(
+        '/cars/$carId/fuel/predict-next/explain',
+      );
+      return PredictExplain.fromJson(
+        (r.data!['data'] as Map).cast<String, dynamic>(),
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  /// Multipart upload of a receipt photo for OCR (spec §7). The field name
+  /// must be `receipt` to match the backend's `multer.single('receipt')`.
+  /// On `parsedBy: "failed"` the caller should treat the response as an
+  /// error and route the user to manual entry.
+  Future<OcrPrefill> ocrReceipt(String carId, File file) async {
+    try {
+      final form = FormData.fromMap({
+        'receipt': await MultipartFile.fromFile(
+          file.path,
+          filename: file.uri.pathSegments.last,
+        ),
+      });
+      final r = await _client.dio.post<Map<String, dynamic>>(
+        '/cars/$carId/fuel/ocr',
+        data: form,
+        options: Options(
+          contentType: 'multipart/form-data',
+          // OCR + LLM round-trip can take 5-10s on a real receipt; bump
+          // above the default 30s receive timeout to be safe.
+          receiveTimeout: const Duration(seconds: 45),
+        ),
+      );
+      return OcrPrefill.fromJson(
+        (r.data!['data'] as Map).cast<String, dynamic>(),
+      );
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
 }
 
 final fuelApiProvider = Provider<FuelApi>((ref) {
@@ -152,4 +201,12 @@ final fuelStatsProvider =
 final fuelPredictionProvider =
     FutureProvider.family<FuelPrediction, String>((ref, carId) async {
   return ref.watch(fuelApiProvider).predictNext(carId);
+});
+
+/// LLM (or fallback) explanation of the predict-next math. Lazy-loaded —
+/// only resolves when something `watch`es it (currently only the explain
+/// bottom sheet). Invalidate after fuel writes if you want a fresh take.
+final predictExplainProvider =
+    FutureProvider.family<PredictExplain, String>((ref, carId) async {
+  return ref.watch(fuelApiProvider).predictNextExplain(carId);
 });
