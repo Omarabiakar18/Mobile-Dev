@@ -1,15 +1,18 @@
 /**
  * OCR field-parse strategies — pure functions, no I/O outside the LLM call.
  *
- * Two strategies are exposed:
- *   1. `parseFieldsWithLlm` — strict-JSON Gemini call (spec §16-A). Best on
- *      mixed-script Lebanese receipts; throws on parse/timeout failure.
- *   2. `parseFieldsWithRegex` — deterministic fallback (spec §7). Matches the
- *      common "$12.34 / 24.56 L / 0.502 /L" patterns. Always returns — sparse
- *      receipts just yield more nulls.
+ * Three strategies are exposed:
+ *   1. `parseFieldsFromImageWithLlm` — Gemini multimodal call. The image goes
+ *      DIRECTLY to Gemini (no separate Vision API needed) and Gemini returns
+ *      the structured fields. This is the default path post-Phase-4-cleanup.
+ *   2. `parseFieldsWithLlm(rawText)` — text-only fallback when an upstream
+ *      OCR layer already extracted text (e.g. a future Tesseract path).
+ *   3. `parseFieldsWithRegex(rawText)` — deterministic regex fallback. Matches
+ *      "$12.34 / 24.56 L / 0.502 /L" patterns. Used when both LLM paths fail.
  *
- * Both return the same shape so the orchestrator (modules/ocr/ocr.service)
- * can tag the response with `parsedBy` after the fact.
+ * All three return the same `ParseResult` shape so the orchestrator
+ * (modules/ocr/ocr.service) can tag the response with `parsedBy` after the
+ * fact.
  */
 import { z } from 'zod';
 
@@ -302,6 +305,91 @@ export async function parseFieldsWithLlm(rawText: string): Promise<ParseResult> 
   // Per-field confidence: model's overall score where the field is filled,
   // 0 where it returned null. Gives Flutter a usable per-field signal even
   // though the LLM itself only emits a single rating.
+  const fieldConf = (v: unknown): number => (v === null ? 0 : overall);
+
+  return {
+    fields: {
+      liters,
+      pricePerLiter,
+      totalCost,
+      station: parsed.station,
+      date: parsed.date,
+    },
+    confidence: {
+      liters: fieldConf(liters),
+      pricePerLiter: fieldConf(pricePerLiter),
+      totalCost: fieldConf(totalCost),
+      station: fieldConf(parsed.station),
+      date: fieldConf(parsed.date),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Multimodal LLM parser (image → fields, no separate OCR step needed)
+// ---------------------------------------------------------------------------
+
+const IMAGE_PROMPT = `You are reading a gas station receipt photo. Extract the printed values into JSON.
+
+The receipt may be in English, French, or Arabic — or a mix. Lebanon gas pumps
+print these three numbers in vertical layout:
+  - largest number = price per liter (USD, sometimes labeled \`/L\` or \`L\`)
+  - middle number  = total cost paid (USD)
+  - third number   = liters dispensed
+The order can vary by station; use unit hints (\`L\`, \`/L\`, \`USD\`, \`$\`) and
+magnitudes to disambiguate (a 2026 fill-up is typically 30-80 L, $30-$120
+total, $0.80-$1.60 per liter).
+
+Return ONLY a JSON object with this exact shape — no commentary, no markdown:
+{
+  "liters":        number|null,
+  "pricePerLiter": number|null,
+  "totalCost":     number|null,
+  "station":       string|null,
+  "date":          "YYYY-MM-DD"|null,
+  "confidence":    number
+}
+
+Rules:
+- Currency is USD. Convert nothing — just read what's printed.
+- If a field is unclear or missing, return null for that field.
+- "station" is the station BRAND or NAME printed on the receipt (e.g.
+  "Total", "Medco", "IPT", "Hypco"). Skip generic words like "Cash" or
+  "Receipt".
+- "confidence" is your overall 0.0–1.0 self-rating across all fields.
+- Today's date is ${'$'}{TODAY}. If no date is printed, return null (do NOT
+  guess today's date).`;
+
+/**
+ * Spec §16-A — multimodal Gemini call. Sends the image directly; no separate
+ * Vision/OCR step required. Returns the same `ParseResult` shape as the
+ * text-based parsers so the orchestrator can swap between them transparently.
+ *
+ * Throws on timeout / JSON-parse / schema violation so the caller can fall
+ * through to regex (after a basic text-extraction layer, if any).
+ */
+export async function parseFieldsFromImageWithLlm(
+  imageBuffer: Buffer,
+  mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
+): Promise<ParseResult> {
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = IMAGE_PROMPT.replace('${TODAY}', today);
+
+  const parsed = await llm().imageJson(
+    prompt,
+    { data: imageBuffer, mimeType },
+    llmReceiptSchema,
+    {
+      temperature: 0.1,
+      maxTokens: 400,
+      systemPrompt: RECEIPT_SYSTEM_PROMPT,
+    },
+  );
+
+  const liters = toNumberOrNull(parsed.liters);
+  const pricePerLiter = toNumberOrNull(parsed.pricePerLiter);
+  const totalCost = toNumberOrNull(parsed.totalCost);
+  const overall = parsed.confidence;
   const fieldConf = (v: unknown): number => (v === null ? 0 : overall);
 
   return {

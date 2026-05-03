@@ -15,12 +15,13 @@ const envSchema = z.object({
 
   UPLOADS_DIR: z.string().default('./uploads'),
 
-  GOOGLE_APPLICATION_CREDENTIALS: z.string().optional().default(''),
+  // GOOGLE_APPLICATION_CREDENTIALS is no longer required — OCR uses Gemini's
+  // multimodal endpoint directly (post-Phase-6 simplification).
 
   LLM_PROVIDER: z.enum(['gemini', 'openai', 'anthropic']).default('gemini'),
   GEMINI_API_KEY: z.string().optional().default(''),
   LLM_MODEL: z.string().default('gemini-1.5-flash'),
-  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
 
   DEMO_MODE: z
     .string()

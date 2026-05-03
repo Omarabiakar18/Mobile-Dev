@@ -24,12 +24,30 @@ export interface LlmOptions {
   systemPrompt?: string;
 }
 
+export interface LlmImageInput {
+  /** Raw image bytes (e.g. JPEG buffer post-sharp-preprocess). */
+  data: Buffer;
+  /** MIME type — `image/jpeg` or `image/png`. */
+  mimeType: string;
+}
+
 export interface LlmProvider {
   name: string;
-  /** Strict-JSON completion. Validates response against the provided Zod schema. */
+  /** Strict-JSON completion from a text prompt. */
   json<T>(prompt: string, schema: z.ZodType<T>, options?: LlmOptions): Promise<T>;
-  /** Free-text completion. */
+  /** Free-text completion from a text prompt. */
   text(prompt: string, options?: LlmOptions): Promise<string>;
+  /**
+   * Multimodal strict-JSON completion: prompt + an image. Used by OCR
+   * (§16-A) so we don't need a separate Vision API — Gemini reads the
+   * receipt directly and returns the structured fields.
+   */
+  imageJson<T>(
+    prompt: string,
+    image: LlmImageInput,
+    schema: z.ZodType<T>,
+    options?: LlmOptions,
+  ): Promise<T>;
 }
 
 class GeminiProvider implements LlmProvider {
@@ -84,17 +102,52 @@ class GeminiProvider implements LlmProvider {
     // better than relying on response_mime_type.
     const fullPrompt = `${prompt}\n\nReturn ONLY valid JSON. No markdown fences, no commentary.`;
     const raw = await this.text(fullPrompt, { ...options, temperature: options?.temperature ?? 0.1 });
-    const trimmed = raw.trim().replace(/^```json\s*/i, '').replace(/```\s*$/i, '');
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch (err) {
-      logger.warn({ raw: trimmed.slice(0, 200) }, 'LLM JSON parse failed');
-      throw new Error('LLM returned invalid JSON');
-    }
-    return schema.parse(parsed);
+    return parseJsonResponse(raw, schema);
   }
+
+  async imageJson<T>(
+    prompt: string,
+    image: LlmImageInput,
+    schema: z.ZodType<T>,
+    options?: LlmOptions,
+  ): Promise<T> {
+    const m = this.model({ ...options, temperature: options?.temperature ?? 0.1 });
+    const fullPrompt = `${prompt}\n\nReturn ONLY valid JSON. No markdown fences, no commentary.`;
+    const result = await this.withTimeout(
+      m.generateContent([
+        {
+          inlineData: {
+            mimeType: image.mimeType,
+            data: image.data.toString('base64'),
+          },
+        },
+        fullPrompt,
+      ]),
+    );
+    return parseJsonResponse(result.response.text(), schema);
+  }
+}
+
+/**
+ * Strip common JSON-in-fenced-codeblock wrappers and validate against a Zod
+ * schema. Throws if the model returned non-JSON or shape-mismatched JSON so
+ * the caller can fall through to whatever non-LLM path it has.
+ */
+function parseJsonResponse<T>(raw: string, schema: z.ZodType<T>): T {
+  const trimmed = raw
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '');
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    logger.warn({ raw: trimmed.slice(0, 200) }, 'LLM JSON parse failed');
+    throw new Error('LLM returned invalid JSON');
+  }
+  return schema.parse(parsed);
 }
 
 let _provider: LlmProvider | null = null;

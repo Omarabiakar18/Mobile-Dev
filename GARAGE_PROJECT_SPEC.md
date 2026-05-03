@@ -73,7 +73,7 @@ A Flutter + Node.js app for car owners that tracks fuel, maintenance, and docume
 - **Theme:** single `ThemeData` instance — one primary color (deep slate), one accent, system font, dark mode for free
 
 ### Third-party services
-- **OCR:** Google Cloud Vision API (free tier covers v1 volume; ~1000 calls/month free)
+- **OCR:** Gemini multimodal — image goes straight to Gemini, returns structured JSON. No separate Vision API. (Phase 6 simplification — see §16-A.)
 - **LLM:** Google Gemini API (free tier covers v1 volume; 1M tokens/day, 15 req/min)
 - **Postgres:** Neon free tier (default). Pooled URL goes into `DATABASE_URL`, direct URL into `DIRECT_URL`.
 - **Hosting (optional, demo evidence):** Render or Railway free tier for the backend itself. Free.
@@ -264,17 +264,18 @@ Same pattern. On launch and after mutations, fetch `/cars/:carId/documents/expir
 7. Low-confidence fields highlighted in orange; user must tap to confirm
 8. User reviews → saves normally via `POST /cars/:carId/fuel`
 
-**Backend side:**
-1. Receive multipart upload, save to `./uploads/ocr/<hash>.jpg` (sha256 of bytes)
-2. **Cache check:** if `<hash>` already in `OcrCache`, return cached result
-3. Preprocess with `sharp`: greyscale → contrast (~+30%) → deskew → upscale if low DPI
-4. Send to Google Cloud Vision (`textDetection`) → returns raw OCR text
-5. **LLM-parse stage** (see §16-A): pass `rawText` to `LlmService.extractFuelFields()` with a strict-JSON prompt that returns `{ liters, pricePerLiter, totalCost, station, date, confidence }`. The LLM handles mixed-script Lebanese receipts far better than regex.
-6. **Regex fallback:** if the LLM call fails or the response isn't valid JSON, fall back to regex extraction (`\b(\d{1,3}[.,]\d{1,3})\s*L\b`, etc.) so the feature still works.
-7. Return `{ fields, confidence, rawText, parsedBy: "llm" | "regex" | "demo" }`.
-8. Insert into `OcrCache` (so the LLM call doesn't repeat for the same photo).
+**Backend side (Phase 6 simplified pipeline — no Google Cloud Vision):**
+1. Receive multipart upload (`receipt` field, JPEG/PNG, ≤8MB)
+2. Preprocess with `sharp`: greyscale → contrast (~+30%) → upscale if <1200px
+3. Hash post-preprocess buffer (sha256). Lookup `OcrCache`.
+4. **Cache hit?** Return cached result with `parsedBy: "cache"`.
+5. **DEMO_MODE?** Return hardcoded plausible fields with `parsedBy: "demo"`. (No external call.)
+6. **Gemini multimodal call** (see §16-A): send the JPEG bytes + a system prompt directly to `llm().imageJson(prompt, { data, mimeType }, schema)`. Gemini reads the image AND extracts fields in one call — no separate Vision API needed.
+7. **Failure?** Return empty fields with `parsedBy: "failed"` (Flutter opens the form blank — never throws).
+8. Insert into `OcrCache`.
+9. Return `{ fields, confidence, rawText: "", parsedBy: "llm" | "cache" | "demo" | "failed" }`.
 
-**Demo-mode fallback:** if `DEMO_MODE=true`, the OCR endpoint skips Vision API and LLM entirely and returns hardcoded plausible fields with `parsedBy: "demo"`. Flip on for the live demo.
+(`rawText` is empty in the multimodal path because Gemini doesn't expose intermediate OCR text; cached/demo entries preserve the empty string for shape consistency. The regex parser is still exported for future use but no longer in the hot path.)
 
 ---
 
