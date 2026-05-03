@@ -280,7 +280,7 @@ Same pattern. On launch and after mutations, fetch `/cars/:carId/documents/expir
 
 ## 8. Geofencing — iOS reality
 
-1. App seeds ~10 real gas stations near Beirut/Jounieh into `GasStation` at backend startup (`db:seed`).
+1. App seeds ~10 real gas stations near Beirut/Jounieh into `GasStation` at backend startup (`db:seed`). Phase 5 ships with 10 stations covering greater Beirut (Achrafieh, Hazmieh, Beirut Port, Bourj Hammoud, Dora, Bauchrieh, Zalka, Antelias, Jounieh, Adma) — mixed Total / Medco / IPT / Hypco brands, coordinates accurate to within ~0.005°.
 2. On Flutter app launch (and on significant location change), call `GET /gas-stations?lat=&lng=&radiusKm=10` and get the 10 nearest.
 3. Register those as `CLCircularRegion` entries via `geofence_service` (well within iOS's 20-region cap).
 4. When the user enters a region, start a 2-minute foreground timer. If they exit before it expires, cancel.

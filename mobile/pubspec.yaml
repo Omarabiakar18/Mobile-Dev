@@ -39,6 +39,9 @@ dependencies:
   permission_handler: ^11.3.1
   geofence_service: ^6.0.0+1
   geolocator: ^13.0.2
+  # Pulled in transitively by flutter_local_notifications, but we use it
+  # directly for `tz.TZDateTime` in the scheduling layer.
+  timezone: ^0.9.4
 
   # Misc UX
   intl: ^0.20.0

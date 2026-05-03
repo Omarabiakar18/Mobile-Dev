@@ -76,6 +76,7 @@
 	<string>Garage lets you attach photos of receipts and maintenance records.</string>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>fetch</string>
 		<string>location</string>
 	</array>
 </dict>

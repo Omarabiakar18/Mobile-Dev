@@ -22,6 +22,7 @@ import {
   remindersByIdRouter,
 } from './modules/reminders/reminders.routes';
 import { ocrRouter } from './modules/ocr/ocr.routes';
+import { gasStationsRouter } from './modules/gas-stations/gas-stations.routes';
 import { startAvgKmPerDayCron } from './jobs/avg-km-per-day.cron';
 
 async function main() {
@@ -66,7 +67,10 @@ async function main() {
     express.static(path.resolve(env.UPLOADS_DIR), { fallthrough: false, maxAge: '7d' }),
   );
 
-  // TODO(phase 5): mount gas-stations routes
+  // Phase 5: gas-station registry — Flutter geofence registrar hits
+  // GET /gas-stations?lat=&lng=&radiusKm= and converts the result to
+  // CLCircularRegions on the device. See spec §8.
+  app.use('/gas-stations', gasStationsRouter);
 
   // 404 + error handlers (must come last)
   app.use(notFoundHandler);

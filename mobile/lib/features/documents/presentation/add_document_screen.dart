@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/notifications/scheduling_sync.dart';
 import '../data/document_model.dart';
 import '../data/documents_api.dart';
 
@@ -102,6 +105,11 @@ class _AddDocumentScreenState extends ConsumerState<AddDocumentScreen> {
           );
       ref.invalidate(documentsListProvider(widget.carId));
       ref.invalidate(expiringDocumentsProvider(widget.carId));
+      // Phase 5 — newly-created document needs its 30d / 7d expiry alerts
+      // scheduled. Fire-and-forget; SchedulingSync swallows network errors.
+      unawaited(
+        ref.read(schedulingSyncProvider).syncForCar(widget.carId),
+      );
       if (mounted) context.pop();
     } on ApiException catch (e) {
       if (mounted) {

@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/notifications/notifications_service.dart';
+import 'core/notifications/permissions_seen_store.dart';
+import 'core/notifications/scheduling_sync.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/auth_notifier.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/auth/presentation/register_screen.dart';
+import 'features/cars/data/cars_api.dart';
 import 'features/cars/presentation/add_car_screen.dart';
 import 'features/cars/presentation/car_detail_screen.dart';
 import 'features/cars/presentation/cars_list_screen.dart';
@@ -15,10 +21,12 @@ import 'features/fuel/data/ocr_prefill_model.dart';
 import 'features/fuel/presentation/add_fuel_screen.dart';
 import 'features/fuel/presentation/fuel_stats_screen.dart';
 import 'features/fuel/presentation/ocr_camera_screen.dart';
+import 'features/geofence/presentation/settings_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/splash_screen.dart';
 import 'features/maintenance/presentation/add_maintenance_screen.dart';
 import 'features/maintenance/presentation/maintenance_list_screen.dart';
+import 'features/permissions/presentation/permissions_screen.dart';
 import 'features/reminders/presentation/add_reminder_screen.dart';
 import 'features/reminders/presentation/reminders_list_screen.dart';
 
@@ -42,7 +50,7 @@ class GarageApp extends ConsumerWidget {
 /// Router rebuilds when auth state changes (loading → signed-in/out → ...).
 /// `redirect` is the choke-point that decides where the user lands.
 final routerProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/',
     refreshListenable: _AuthRefresh(ref),
     redirect: (context, state) {
@@ -55,15 +63,30 @@ final routerProvider = Provider<GoRouter>((ref) {
       final signedIn = auth.maybeWhen(data: (u) => u != null, orElse: () => false);
       final onAuth = loc == '/login' || loc == '/register';
       final onSplash = loc == '/splash';
+      final onPermissions = loc == '/permissions';
+      final permissionsSeen = ref.read(permissionsSeenProvider);
 
       if (!signedIn && !onAuth) return '/login';
-      if (signedIn && (onAuth || onSplash)) return '/';
+      if (signedIn && (onAuth || onSplash)) {
+        // First-launch authenticated users see the explainer once.
+        return permissionsSeen ? '/' : '/permissions';
+      }
+      // Authenticated but landed somewhere else without ever seeing the
+      // explainer — e.g. cold-start deep link. Don't blackhole the deep
+      // link; only intercept the bare home path.
+      if (signedIn && !permissionsSeen && loc == '/' && !onPermissions) {
+        return '/permissions';
+      }
       return null;
     },
     routes: [
       GoRoute(path: '/splash', builder: (_, _) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+      GoRoute(
+        path: '/permissions',
+        builder: (_, _) => const PermissionsScreen(),
+      ),
       GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
       GoRoute(path: '/cars', builder: (_, _) => const CarsListScreen()),
       GoRoute(path: '/cars/new', builder: (_, _) => const AddCarScreen()),
@@ -134,8 +157,46 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) =>
             AddReminderScreen(carId: state.pathParameters['id']!),
       ),
+
+      // Phase 5 — settings (incl. simulate-geofence debug button in
+      // non-release builds, per spec §9 screen 13).
+      GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
     ],
   );
+
+  // Phase 5 — once the router exists we hook the notification tap stream
+  // so foreground & cold-start taps both deep-link via go_router. Cold-start
+  // events are replayed by NotificationsService.init() (called from main()
+  // *before* runApp), and since `onTap` is a broadcast stream the
+  // microtask-scheduled cold-start event is delivered to this listener
+  // attached during the first `routerProvider` build.
+  final notifications = ref.read(notificationsServiceProvider);
+  final tapSub = notifications.onTap.listen((tap) {
+    final route = tap.route;
+    if (route == null || route.isEmpty) return;
+    // Defer to the next microtask so we don't navigate during a build.
+    scheduleMicrotask(() {
+      try {
+        router.go(route);
+      } catch (_) {
+        // Unknown / malformed route — drop silently.
+      }
+    });
+  });
+  ref.onDispose(tapSub.cancel);
+
+  // Phase 5 — sync notifications on every cars-list load (initial & after
+  // mutation). Listening (vs reading once) means we resync when the user
+  // adds / removes a car too. Errors are swallowed inside SchedulingSync.
+  ref.listen<AsyncValue<dynamic>>(carsListProvider, (_, next) {
+    next.whenData((_) {
+      // Fire and forget — this runs ~1 zonedSchedule per (reminder, doc) per
+      // car; fine to run in the background.
+      unawaited(ref.read(schedulingSyncProvider).syncForAllCars());
+    });
+  });
+
+  return router;
 });
 
 /// Bridges Riverpod's `authProvider` changes to GoRouter's `refreshListenable`

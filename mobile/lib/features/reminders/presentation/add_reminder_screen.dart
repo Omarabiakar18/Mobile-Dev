@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/notifications/scheduling_sync.dart';
 import '../../cars/data/cars_api.dart';
 import '../data/reminders_api.dart';
 
@@ -88,6 +91,11 @@ class _AddReminderScreenState extends ConsumerState<AddReminderScreen> {
           );
       ref.invalidate(remindersListProvider(widget.carId));
       ref.invalidate(dueRemindersProvider(widget.carId));
+      // Phase 5 — newly-created reminder needs its 30d / 7d notifications
+      // scheduled. Fire-and-forget; SchedulingSync swallows network errors.
+      unawaited(
+        ref.read(schedulingSyncProvider).syncForCar(widget.carId),
+      );
       if (mounted) context.pop();
     } on ApiException catch (e) {
       if (mounted) {
