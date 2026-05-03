@@ -26,7 +26,12 @@ import * as ocrService from './ocr.service';
 
 // ---------- Multer (memory storage) ---------------------------------------
 
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/heic']);
+// HEIC intentionally NOT on this list: the npm-distributed `sharp` build
+// doesn't link `libheif`, so a HEIC payload throws inside preprocess. The
+// Flutter side already re-encodes camera HEIC captures to JPEG via
+// flutter_image_compress before upload, so this is just a defensive guard
+// against direct API callers (or future Flutter regressions).
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png']);
 
 const upload = multer({
   storage: multer.memoryStorage(),

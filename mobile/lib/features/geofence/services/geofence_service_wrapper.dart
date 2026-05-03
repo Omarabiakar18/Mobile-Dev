@@ -191,14 +191,46 @@ class GarageGeofenceService {
   /// completion logic immediately for the given station.
   ///
   /// Returns true if the station was found and the notification was fired.
+  /// Falls back to fetching the station from the backend when registration
+  /// hasn't happened yet (e.g. demo machine outside the seeded radius, or
+  /// location permission not yet granted) so the demo button still works.
   Future<bool> simulateEntry({required String stationId}) async {
-    final station = _registered[stationId];
+    var station = _registered[stationId];
+    if (station == null) {
+      // Last-ditch: hit the API and grab the station directly. Any registered
+      // station is in our DB, and we keep the call cheap by using a tiny
+      // search radius from a Beirut-ish anchor that the seed always covers.
+      try {
+        final stations = await _ref
+            .read(gasStationsApiProvider)
+            .findNearby(lat: 33.8938, lng: 35.5018, radiusKm: 30, limit: 50);
+        station = stations.where((s) => s.id == stationId).firstOrNull;
+      } catch (e) {
+        _log('simulateEntry: API fallback failed — $e');
+      }
+    }
     if (station == null) {
       _log('simulateEntry: unknown station $stationId');
       return false;
     }
     await _fireDwellNotification(station);
     return true;
+  }
+
+  /// Returns the list of stations that the demo's "Simulate geofence entry"
+  /// bottom sheet can pick from. Prefers the already-registered set (so the
+  /// menu shows the same stations geofencing watches in production), but
+  /// falls back to a Beirut-anchored API fetch when nothing's registered yet.
+  Future<List<GasStation>> simulateCandidates() async {
+    if (_registered.isNotEmpty) return _registered.values.toList();
+    try {
+      return await _ref
+          .read(gasStationsApiProvider)
+          .findNearby(lat: 33.8938, lng: 35.5018, radiusKm: 30, limit: 10);
+    } catch (e) {
+      _log('simulateCandidates: API fallback failed — $e');
+      return const [];
+    }
   }
 
   // ---------------------------------------------------------------------------

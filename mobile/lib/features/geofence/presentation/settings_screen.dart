@@ -89,11 +89,14 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _onSimulateTapped(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     final svc = ref.read(garageGeofenceServiceProvider);
-    final stations = svc.registeredStations;
 
+    // simulateCandidates() prefers already-registered stations, but falls
+    // back to a Beirut-anchored API fetch so the demo button works even on
+    // a fresh install where location permission hasn't been granted yet.
+    final stations = await svc.simulateCandidates();
     if (stations.isEmpty) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('No geofences registered yet.')),
+        const SnackBar(content: Text('No gas stations available — check API connection.')),
       );
       return;
     }

@@ -66,12 +66,19 @@ export async function recomputeAvgKmPerDay(
 ): Promise<void> {
   const client = tx ?? prisma;
 
-  const entries = await client.fuelEntry.findMany({
-    where: { carId },
-    select: { odometer: true, date: true },
-  });
+  const [entries, prevCar] = await Promise.all([
+    client.fuelEntry.findMany({
+      where: { carId },
+      select: { odometer: true, date: true },
+    }),
+    client.car.findUnique({
+      where: { id: carId },
+      select: { avgKmPerDay: true },
+    }),
+  ]);
 
   const value = computeAvgKmPerDay(entries);
+  const prev = prevCar?.avgKmPerDay == null ? null : Number(prevCar.avgKmPerDay);
 
   await client.car.update({
     where: { id: carId },
@@ -79,4 +86,33 @@ export async function recomputeAvgKmPerDay(
       avgKmPerDay: value === null ? null : new Prisma.Decimal(value),
     },
   });
+
+  // Invalidate AI-generated reminder messages when the underlying pace shifts
+  // significantly (>5%). Otherwise the cached "due in 28 days" sentence stays
+  // on the home banner while the recomputed projection now says 23 days — the
+  // reviewer flagged this as a live-demo embarrassment.
+  if (shouldInvalidateAiMessages(prev, value)) {
+    await client.serviceReminder.updateMany({
+      where: { carId, aiMessage: { not: null } },
+      data: { aiMessage: null, aiMessageGeneratedAt: null },
+    });
+  }
+}
+
+/**
+ * Returns true when the new avgKmPerDay differs from the previous value enough
+ * that any cached `aiMessage` (which interpolates the predicted date) is
+ * potentially stale.
+ *
+ * Rules:
+ *   - prev null → next non-null: invalidate (we went from "no projection" to
+ *     "projection exists"; cached fallback messages need refreshing).
+ *   - prev non-null → next null: invalidate (we lost the km-based projection).
+ *   - both non-null: invalidate when |Δ| / prev > 5%.
+ */
+export function shouldInvalidateAiMessages(prev: number | null, next: number | null): boolean {
+  if (prev === null && next === null) return false;
+  if (prev === null || next === null) return true;
+  if (prev === 0) return next !== 0;
+  return Math.abs(next - prev) / Math.abs(prev) > 0.05;
 }
