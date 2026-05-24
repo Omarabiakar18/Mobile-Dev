@@ -24,15 +24,16 @@ gasStationsRouter.get(
   '/',
   validateQuery(nearbyQuerySchema),
   asyncHandler(async (req, res) => {
-    const { lat, lng, radiusKm } = (
+    const { lat, lng, radiusKm, limit } = (
       req as unknown as { validatedQuery: NearbyQueryInput }
     ).validatedQuery;
 
-    const stations = await gasStationsService.findNearby(lat, lng, radiusKm);
+    const stations = await gasStationsService.findNearby(lat, lng, radiusKm, limit);
     ok(res, {
       stations,
       origin: { lat, lng },
       radiusKm,
+      limit,
     });
   }),
 );

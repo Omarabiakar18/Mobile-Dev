@@ -150,28 +150,44 @@ export function fallbackReminderMessage(
 }
 
 /**
- * Lists all reminders for a car the user owns. Ordering matches the spec:
- * date-based first when `intervalMonths` is set, falling back to km-based.
+ * Lists every reminder for a car the user owns, enriched with the
+ * **deterministic** projection (`predictedDate`, `daysRemaining`) and the
+ * **cached** `aiMessage` if one exists. This endpoint never calls the LLM —
+ * use `/due` when you want the home banner with on-demand AI phrasing.
+ *
+ * Sort: by `predictedDate` ascending (soonest first). Rows that can't be
+ * projected (no intervalKm and no intervalMonths, or km-only on a car with
+ * no avgKmPerDay yet) sort to the end with `predictedDate: null`.
  */
 export async function listForCar(userId: string, carId: string) {
-  await assertOwnsCar(userId, carId);
-  // We sort in JS rather than two SQL queries because the rule is per-row, not
-  // per-query. Prisma can't express "order by lastDoneDate when intervalMonths
-  // is non-null else by lastDoneKm" cleanly.
+  const car = await assertOwnsCar(userId, carId);
   const all = await prisma.serviceReminder.findMany({ where: { carId } });
-  return [...all].sort((a, b) => {
-    const aHasMonths = a.intervalMonths != null;
-    const bHasMonths = b.intervalMonths != null;
-    if (aHasMonths && bHasMonths) {
-      return a.lastDoneDate.getTime() - b.lastDoneDate.getTime();
-    }
-    if (!aHasMonths && !bHasMonths) {
-      return a.lastDoneKm - b.lastDoneKm;
-    }
-    // Mixed: month-based reminders come first since they have a guaranteed
-    // calendar projection.
-    return aHasMonths ? -1 : 1;
+
+  const now = new Date();
+  const enriched = all.map((r) => {
+    const proj = projectNextDate(r, car, now);
+    return {
+      ...r,
+      predictedDate: proj?.predictedDate ?? null,
+      daysRemaining: proj?.daysRemaining ?? null,
+      // aiMessage is whatever's cached on the row. Will be null for fresh
+      // reminders that haven't been served by /due yet. The mobile list
+      // screen renders the deterministic headline ("Due {date}") regardless.
+    };
   });
+
+  enriched.sort((a, b) => {
+    if (a.predictedDate && b.predictedDate) {
+      return a.predictedDate.getTime() - b.predictedDate.getTime();
+    }
+    // Reminders without projection sort to the end.
+    if (a.predictedDate) return -1;
+    if (b.predictedDate) return 1;
+    // Both unprojectable: stable on serviceType for predictable ordering.
+    return a.serviceType.localeCompare(b.serviceType);
+  });
+
+  return enriched;
 }
 
 export async function create(
