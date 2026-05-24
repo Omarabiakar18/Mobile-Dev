@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/api/base_url.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/ui/connecting_state.dart';
+import '../../../core/ui/feedback.dart';
 import '../../../core/ui/status_chip.dart';
 import '../data/document_model.dart';
 import '../data/documents_api.dart';
@@ -174,12 +177,40 @@ class _DocumentCard extends StatelessWidget {
                         : theme.colorScheme.outline,
                   ),
                 ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _openFile(ctx, d.fileUrl),
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('Open file'),
+                  ),
+                ),
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  Future<void> _openFile(BuildContext context, String fileUrl) async {
+    final fullUrl = fileUrl.startsWith('http://') || fileUrl.startsWith('https://')
+        ? fileUrl
+        : '$apiBaseUrl$fileUrl';
+    try {
+      final ok = await launchUrl(
+        Uri.parse(fullUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!ok && context.mounted) {
+        showFeedback(context, "Couldn't open the file.", isError: true);
+      }
+    } catch (_) {
+      if (context.mounted) {
+        showFeedback(context, "Couldn't open the file.", isError: true);
+      }
+    }
   }
 }
 

@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/notifications/notifications_service.dart';
 import '../../../core/notifications/permissions_seen_store.dart';
@@ -100,7 +102,7 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                "You can grant or revoke either one later in iOS Settings — nothing is irreversible.",
+                'You can grant or revoke either one later in your phone settings — nothing is irreversible.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.outline,
                 ),
@@ -128,6 +130,14 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
                 busy: _busyLoc,
                 onPressed: _requestLocation,
               ),
+              // Android-only: many OEMs (TECNO/HiOS, Xiaomi/MIUI, Oppo,
+              // Vivo) kill background broadcasts that drive scheduled
+              // notifications. Surface the battery-whitelist guidance
+              // during onboarding so the user knows what to do.
+              if (defaultTargetPlatform == TargetPlatform.android) ...[
+                const SizedBox(height: 12),
+                const _BatteryWhitelistCard(),
+              ],
               const Spacer(),
               FilledButton(
                 onPressed: _continue,
@@ -140,6 +150,65 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Android-only onboarding card. Explains why scheduled reminders may not
+/// fire on aggressive OEMs (TECNO Power Marshall, Xiaomi MIUI, Oppo ColorOS,
+/// Vivo FuntouchOS) and offers a one-tap shortcut to app settings where the
+/// user can flip "No restrictions" / "Don't optimize" + "Autostart". Stock
+/// Pixel and Samsung One UI honor scheduled alarms — this card is harmless
+/// noise there but stays Android-gated so it never appears on iOS.
+class _BatteryWhitelistCard extends StatelessWidget {
+  const _BatteryWhitelistCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.battery_charging_full,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Background reliability',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Some Android phones (TECNO, Xiaomi, Oppo, Vivo) close apps '
+              'aggressively in the background, which can stop scheduled '
+              'reminders from firing.\n\n'
+              'To keep notifications reliable: open app settings → Battery → '
+              'pick "No restrictions" (or "Don\'t optimize"). On '
+              'TECNO/Infinix, also enable Autostart and use the recent-apps '
+              '"Lock" gesture.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                onPressed: () => openAppSettings(),
+                child: const Text('Open app settings'),
+              ),
+            ),
+          ],
         ),
       ),
     );

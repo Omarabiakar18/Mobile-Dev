@@ -214,38 +214,46 @@ class _CarHeader extends ConsumerWidget {
               children: [
                 Text('Switch car', style: theme.textTheme.titleLarge),
                 const SizedBox(height: 12),
-                for (final c in allCars)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: c.id == car.id
-                            ? tokens.accent.withValues(alpha: 0.20)
-                            : theme.colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.directions_car_filled,
-                        color: c.id == car.id
-                            ? tokens.accent
-                            : theme.colorScheme.outline,
-                      ),
-                    ),
-                    title: Text(c.displayName),
-                    subtitle: Text(
-                      '${c.plate} · ${NumberFormat.decimalPattern('en_US').format(c.currentKm)} km',
-                    ),
-                    trailing: c.id == car.id
-                        ? Icon(Icons.check_circle,
-                            color: tokens.success, size: 20)
-                        : null,
-                    onTap: () {
-                      ref.read(selectedCarIdProvider.notifier).state = c.id;
-                      Navigator.of(sheetCtx).pop();
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: allCars.length,
+                    itemBuilder: (_, i) {
+                      final c = allCars[i];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: c.id == car.id
+                                ? tokens.accent.withValues(alpha: 0.20)
+                                : theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            Icons.directions_car_filled,
+                            color: c.id == car.id
+                                ? tokens.accent
+                                : theme.colorScheme.outline,
+                          ),
+                        ),
+                        title: Text(c.displayName),
+                        subtitle: Text(
+                          '${c.plate} · ${NumberFormat.decimalPattern('en_US').format(c.currentKm)} km',
+                        ),
+                        trailing: c.id == car.id
+                            ? Icon(Icons.check_circle,
+                                color: tokens.success, size: 20)
+                            : null,
+                        onTap: () {
+                          ref.read(selectedCarIdProvider.notifier).state = c.id;
+                          Navigator.of(sheetCtx).pop();
+                        },
+                      );
                     },
                   ),
+                ),
                 const Divider(height: 24),
                 ListTile(
                   contentPadding: EdgeInsets.zero,

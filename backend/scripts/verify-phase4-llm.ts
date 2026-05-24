@@ -95,7 +95,13 @@ console.log('\n[1] buildReminderPrompt — spec §16-B template');
   assertContains('lastDoneKm in prompt', prompt, '60000 km');
   assertContains('lastDoneDate iso in prompt', prompt, '2025-10-30');
   assertContains('predictedDate iso in prompt', prompt, '2026-06-29');
-  assertContains('daysRemaining in prompt', prompt, '60 days from today');
+  // After the 2026-05-24 LLM sign-flip fix the prompt no longer says
+  // "N days from today" (which the model could misread when N was negative).
+  // It now emits an explicit `Status: due in N days.` line plus a
+  // `daysRemaining: N` numeric field with a sign-convention reminder.
+  assertContains('daysRemaining numeric in prompt', prompt, 'daysRemaining: 60');
+  assertContains('status phrase in prompt', prompt, 'Status: due in 60 days');
+  assertContains('isOverdue flag in prompt', prompt, 'isOverdue: false');
   assertContains('avg km/day in prompt', prompt, '50 km/day');
 }
 
@@ -140,15 +146,29 @@ console.log('\n[3] fallbackReminderMessage — exact template per §16-B');
 // ---------------------------------------------------------------------------
 console.log('\n[4] fallbackReminderMessage — overdue (negative days)');
 {
-  const out = fallbackReminderMessage(
-    'tires',
-    -3,
-    new Date('2026-04-27T12:00:00Z'),
+  // After the 2026-05-24 LLM sign-flip fix the fallback no longer emits
+  // "due in -N days" (read live as confusingly natural English). Overdue
+  // now phrases as "was due N days ago"; zero phrases as "due today";
+  // positive phrases as "due in N day(s)".
+  assertEq(
+    'fallback overdue (negative daysRemaining)',
+    fallbackReminderMessage('tires', -3, new Date('2026-04-27T12:00:00Z')),
+    'tires was due 3 days ago (~2026-04-27)',
   );
   assertEq(
-    'fallback string with negative daysRemaining',
-    out,
-    'tires due in -3 days (~2026-04-27)',
+    'fallback overdue (exactly 1 day late)',
+    fallbackReminderMessage('oil', -1, new Date('2026-04-27T12:00:00Z')),
+    'oil was due 1 day ago (~2026-04-27)',
+  );
+  assertEq(
+    'fallback zero (due today)',
+    fallbackReminderMessage('belts', 0, new Date('2026-04-30T12:00:00Z')),
+    'belts due today (~2026-04-30)',
+  );
+  assertEq(
+    'fallback singular (due in 1 day)',
+    fallbackReminderMessage('coolant', 1, new Date('2026-05-01T12:00:00Z')),
+    'coolant due in 1 day (~2026-05-01)',
   );
 }
 

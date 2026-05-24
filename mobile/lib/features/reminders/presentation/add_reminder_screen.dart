@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/theme/tokens.dart';
 import '../../../core/ui/feedback.dart';
 import '../../../core/notifications/scheduling_sync.dart';
 import '../../cars/data/cars_api.dart';
@@ -127,6 +128,15 @@ class _AddReminderScreenState extends ConsumerState<AddReminderScreen> {
       });
     }
 
+    // Current km from the loaded car — used by the km-vs-calendar conflict
+    // banner below. When the cars list hasn't resolved yet, currentKm is
+    // null and the banner stays silent.
+    final currentKm = carsAsync.maybeWhen(
+      data: (cars) =>
+          cars.where((c) => c.id == widget.carId).firstOrNull?.currentKm,
+      orElse: () => null,
+    );
+
     final dateFmt = DateFormat.yMMMd();
 
     return Scaffold(
@@ -216,6 +226,27 @@ class _AddReminderScreenState extends ConsumerState<AddReminderScreen> {
                         color: Theme.of(context).colorScheme.outline,
                       ),
                 ),
+                // Live km-vs-calendar conflict banner. Re-evaluates whenever
+                // the user edits any of the three relevant fields. HANDOFF
+                // 2026-05-24: when both intervals are set AND currentKm is
+                // already past lastDoneKm + intervalKm, the projection
+                // takes min(kmLeg, calLeg) → kmLeg ≤ 0 → projects to today,
+                // silently masking the calendar leg. Warn the user before
+                // they save instead of surfacing the surprise later on the
+                // home banner.
+                ListenableBuilder(
+                  listenable: Listenable.merge(
+                    [_intervalKm, _intervalMonths, _lastDoneKm],
+                  ),
+                  builder: (ctx, _) {
+                    final warning = _kmConflictMessage(currentKm);
+                    if (warning == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: _ConflictBanner(message: warning),
+                    );
+                  },
+                ),
                 const SizedBox(height: 16),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -247,6 +278,62 @@ class _AddReminderScreenState extends ConsumerState<AddReminderScreen> {
 
   static String? _required(String? v) =>
       (v == null || v.trim().isEmpty) ? 'Required' : null;
+
+  /// Returns a user-facing warning string if both intervals are set AND
+  /// the car's current km is already at/past the km threshold, otherwise
+  /// null. The projection logic on the backend takes min(kmLeg, calLeg);
+  /// when kmLeg projects to today, the calendar leg is silently dropped.
+  /// Surface this before save so the user can adjust expectations.
+  String? _kmConflictMessage(int? currentKm) {
+    if (currentKm == null) return null;
+    final intervalKm = int.tryParse(_intervalKm.text.trim());
+    final intervalMonths = int.tryParse(_intervalMonths.text.trim());
+    final lastDoneKm = int.tryParse(_lastDoneKm.text.trim());
+    if (intervalKm == null ||
+        intervalMonths == null ||
+        lastDoneKm == null) {
+      return null;
+    }
+    final threshold = lastDoneKm + intervalKm;
+    if (currentKm < threshold) return null;
+    return "You're already past the km threshold — current $currentKm km, "
+        'threshold $threshold km. The projection will use today from the km '
+        'side and ignore the $intervalMonths-month calendar interval.';
+  }
+}
+
+/// Token-colored warning banner used by the km-vs-calendar conflict notice.
+/// Same visual shape as [StatusChip.dueSoon] so the form's amber surface
+/// reads consistently with the rest of the app's reminder UI.
+class _ConflictBanner extends StatelessWidget {
+  const _ConflictBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: tokens.warningContainer,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tokens.warning.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18, color: tokens.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Field extends StatelessWidget {

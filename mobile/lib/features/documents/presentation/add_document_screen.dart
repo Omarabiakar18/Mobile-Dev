@@ -44,9 +44,24 @@ class _AddDocumentScreenState extends ConsumerState<AddDocumentScreen> {
       type: FileType.custom,
       allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'heic'],
     );
-    if (result != null && result.files.isNotEmpty) {
-      setState(() => _picked = result.files.first);
+    if (result == null || result.files.isEmpty) return;
+    final picked = result.files.first;
+    // Pre-check size before the multipart upload — backend caps at 5 MB
+    // (Multer LIMIT_FILE_SIZE → 413 FILE_TOO_LARGE). Surface the limit
+    // locally so the user doesn't wait for the round-trip just to see
+    // "too large". Caught in the 2026-05-24 HANDOFF as a 10-min fix.
+    const maxBytes = 5 * 1024 * 1024;
+    if (picked.size > maxBytes) {
+      if (mounted) {
+        showFeedback(
+          context,
+          'File is ${_formatBytes(picked.size)} — max is 5 MB.',
+          isError: true,
+        );
+      }
+      return;
     }
+    setState(() => _picked = picked);
   }
 
   Future<void> _pickExpiry() async {

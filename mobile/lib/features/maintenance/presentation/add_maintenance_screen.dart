@@ -116,13 +116,17 @@ class _AddMaintenanceScreenState extends ConsumerState<AddMaintenanceScreen> {
       ref.invalidate(maintenanceListProvider(widget.carId));
 
       // Cross-update side effect (Alaa's #3): when the backend bumped one or
-      // more reminders, invalidate the reminders list provider so the home
-      // banner + reminders tab reflect the new lastDone* immediately, and
-      // enrich the success toast with the count so the user sees the
-      // connection between the two features.
+      // more reminders, invalidate BOTH the full reminders list AND the
+      // home-dashboard due-reminders provider so the banner refreshes too.
+      // Missing the dueRemindersProvider was caught in the 2026-05-04 QA
+      // pass — the toast said "1 reminder updated" but the home still
+      // showed the old "X services due" banner because that comes from
+      // /due, not /reminders. Enrich the success toast with the count so
+      // the user sees the connection between the two features.
       final bumped = result.updatedReminderIds.length;
       if (bumped > 0) {
         ref.invalidate(remindersListProvider(widget.carId));
+        ref.invalidate(dueRemindersProvider(widget.carId));
       }
 
       if (mounted) {

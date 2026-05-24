@@ -17,8 +17,13 @@ const MS_PER_DAY = 86_400_000;
  */
 const AI_MESSAGE_MAX_AGE_MS = 7 * MS_PER_DAY;
 
-const REMINDER_SYSTEM_PROMPT =
-  'You write friendly, factual one-sentence service reminders for a car owner. Use ONLY the numbers provided — do not invent any. Do not give specific repair cost estimates. Aim for ~20 words. Conversational but practical.';
+const REMINDER_SYSTEM_PROMPT = [
+  'You write friendly, factual one-sentence service reminders for a car owner. Use ONLY the numbers provided — do not invent any.',
+  '',
+  'CRITICAL: when `daysRemaining` is NEGATIVE, the reminder is OVERDUE — phrase it as "was due N days ago" or "N days overdue", NEVER "due in N days". When daysRemaining is POSITIVE, phrase it as "due in N days" or "due tomorrow/today". Sign matters. Read it twice before writing.',
+  '',
+  'Aim for ~20 words. Conversational but practical. Do not give specific repair cost estimates.',
+].join('\n');
 
 /**
  * Verifies the reminder exists and the car it belongs to is owned by `userId`.
@@ -125,12 +130,26 @@ export function buildReminderPrompt(
   const avgRounded = Math.round(avg * 10) / 10;
   const predictedDateIso = projection.predictedDate.toISOString().slice(0, 10);
   const lastDoneDateIso = new Date(reminder.lastDoneDate).toISOString().slice(0, 10);
+  // Sign convention: negative `daysRemaining` = overdue (predictedDate in the
+  // past). `isOverdue` is a redundant boolean signal so the model can't
+  // misread the sign — both must agree.
+  const isOverdue = projection.daysRemaining < 0;
+  const absDays = Math.abs(projection.daysRemaining);
+  // Human-readable status phrase the model can echo without doing sign math.
+  const statusPhrase = isOverdue
+    ? `OVERDUE by ${absDays} day${absDays === 1 ? '' : 's'} (predicted date is in the past)`
+    : projection.daysRemaining === 0
+      ? 'due today'
+      : `due in ${absDays} day${absDays === 1 ? '' : 's'}`;
 
   return [
     `Car: ${car.year} ${car.make} ${car.model}, currently at ${car.currentKm} km.`,
     `Service: ${reminder.serviceType}.`,
     `Last done: ${reminder.lastDoneKm} km on ${lastDoneDateIso}.`,
-    `Predicted next: ${predictedDateIso} (${projection.daysRemaining} days from today).`,
+    `Predicted next: ${predictedDateIso}.`,
+    `daysRemaining: ${projection.daysRemaining} (negative = overdue, positive = upcoming).`,
+    `isOverdue: ${isOverdue}.`,
+    `Status: ${statusPhrase}.`,
     `Driving pace: ${avgRounded} km/day.`,
   ].join('\n');
 }
@@ -146,7 +165,16 @@ export function fallbackReminderMessage(
   predictedDate: Date,
 ): string {
   const iso = predictedDate.toISOString().slice(0, 10);
-  return `${serviceType} due in ${daysRemaining} days (~${iso})`;
+  const absDays = Math.abs(daysRemaining);
+  // Match the sign convention enforced in the LLM prompt: negative
+  // daysRemaining means OVERDUE, not "due in -N days".
+  if (daysRemaining < 0) {
+    return `${serviceType} was due ${absDays} day${absDays === 1 ? '' : 's'} ago (~${iso})`;
+  }
+  if (daysRemaining === 0) {
+    return `${serviceType} due today (~${iso})`;
+  }
+  return `${serviceType} due in ${absDays} day${absDays === 1 ? '' : 's'} (~${iso})`;
 }
 
 /**

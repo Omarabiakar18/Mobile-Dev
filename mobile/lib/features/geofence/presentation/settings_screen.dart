@@ -13,8 +13,11 @@ import '../services/geofence_service_wrapper.dart';
 /// Spec §9 screen 13 — Profile / Settings.
 ///
 /// Stub for v1: surface the user, give them a way out (sign out), expose
-/// shortcuts to the iOS Settings app for granting permissions, and host the
+/// shortcuts to the phone settings for granting permissions, and host the
 /// "Simulate Geofence Entry" debug button that drives the demo §10 step 7.
+/// Android also gets a Background reliability section explaining the OEM
+/// battery-whitelist procedure (TECNO/Xiaomi/Oppo/Vivo kill scheduled
+/// notifications by default — stock Pixel and Samsung One UI don't).
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -59,7 +62,7 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.notifications_outlined),
             title: const Text('Notification permissions'),
-            subtitle: const Text('Open iOS Settings to manage'),
+            subtitle: const Text('Open phone settings to manage'),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () => openAppSettings(),
           ),
@@ -68,10 +71,28 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.location_on_outlined),
             title: const Text('Location permissions'),
-            subtitle: const Text('Open iOS Settings to manage'),
+            subtitle: const Text('Open phone settings to manage'),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () => openAppSettings(),
           ),
+
+          // Android-only: explain why scheduled notifications can fail on
+          // aggressive OEMs and link to the battery-whitelist toggle.
+          if (defaultTargetPlatform == TargetPlatform.android) ...[
+            _SectionHeader(label: 'Background reliability', theme: theme),
+            ListTile(
+              leading: const Icon(Icons.battery_charging_full),
+              title: const Text('Keep reminders firing'),
+              subtitle: const Text(
+                'Some Android phones (TECNO, Xiaomi, Oppo, Vivo) close apps '
+                'aggressively. Tap to open settings — set Battery to '
+                '"No restrictions" so scheduled reminders fire.',
+              ),
+              isThreeLine: true,
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: () => openAppSettings(),
+            ),
+          ],
 
           if (kDebugMode) ...[
             _SectionHeader(label: 'Debug tools', theme: theme),

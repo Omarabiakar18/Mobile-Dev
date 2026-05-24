@@ -31,7 +31,13 @@ class DioClient {
     // Order matters: retry runs FIRST (so 401-refresh logic only sees
     // requests that actually came back). Auth runs second so retried
     // requests still pick up the latest bearer token.
-    dio.interceptors.add(_TransientRetryInterceptor());
+    //
+    // The retry interceptor reuses `dio` itself for the retried call so the
+    // retried request goes through every other interceptor and inherits the
+    // project's validateStatus / contentType / responseType — otherwise the
+    // response shape arrives as a raw JSON string and callers like
+    // `cars_api.list()` get an empty list out of `r.data?['data']?['cars']`.
+    dio.interceptors.add(_TransientRetryInterceptor(this));
     dio.interceptors.add(_AuthInterceptor(this));
   }
 
@@ -60,6 +66,17 @@ class DioClient {
 ///   - DioExceptionType.cancel               — caller explicitly bailed
 ///   - DioExceptionType.badCertificate       — pointless to retry
 class _TransientRetryInterceptor extends Interceptor {
+  _TransientRetryInterceptor(this._client);
+
+  /// We re-issue the retried request through the parent DioClient's own dio
+  /// instance so it picks up auth interceptors, validateStatus, content-type
+  /// negotiation, and JSON response parsing. Creating a bare `Dio()` here
+  /// returned `Response<dynamic>` whose `data` was a raw string — callers
+  /// got empty lists out of `r.data?['data']?['cars']` and the home screen
+  /// fell to its empty state on cold-start. That bug was real and observed
+  /// during QA on 2026-05-04.
+  final DioClient _client;
+
   static const int _maxRetries = 2;
   static const List<Duration> _backoff = [
     Duration(milliseconds: 600),
@@ -88,18 +105,29 @@ class _TransientRetryInterceptor extends Interceptor {
       return;
     }
 
-    // Wait the backoff window, then re-issue with the attempt counter
-    // bumped. The new request goes through every interceptor (including
-    // auth, so a fresh bearer token is picked up if it rotated).
+    // Wait the backoff window, then re-issue via the same dio instance so
+    // every interceptor (auth in particular) gets to do its job, AND the
+    // BaseOptions-level validateStatus / contentType / responseType are
+    // inherited so the response data is parsed as JSON.
+    //
+    // To avoid infinite recursion, we copy req.extra so the bumped attempt
+    // counter rides along and this interceptor bails on the next loop once
+    // _maxRetries is hit.
     await Future<void>.delayed(_backoff[attempt]);
-    req.extra[_retryKey] = attempt + 1;
+
     try {
-      final retried = await Dio(BaseOptions(
-        baseUrl: req.baseUrl,
-        connectTimeout: req.connectTimeout,
-        receiveTimeout: req.receiveTimeout,
-        sendTimeout: req.sendTimeout,
-      )).fetch<dynamic>(req);
+      final retried = await _client.dio.request<dynamic>(
+        req.path,
+        data: req.data,
+        queryParameters: req.queryParameters,
+        options: Options(
+          method: req.method,
+          headers: Map<String, dynamic>.from(req.headers),
+          contentType: req.contentType,
+          responseType: req.responseType,
+          extra: {...req.extra, _retryKey: attempt + 1},
+        ),
+      );
       handler.resolve(retried);
     } on DioException catch (e) {
       // Hand the latest failure back so onError chains correctly.
