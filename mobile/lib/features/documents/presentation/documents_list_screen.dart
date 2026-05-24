@@ -199,9 +199,15 @@ class _DocumentCard extends StatelessWidget {
         ? fileUrl
         : '$apiBaseUrl$fileUrl';
     try {
+      // inAppBrowserView opens an in-app SFSafariViewController on iOS (no
+      // LSApplicationQueriesSchemes round-trip) and Custom Tabs on Android.
+      // Better UX than externalApplication for PDFs/images — the user stays
+      // inside Garage and can swipe back to the documents list. iOS audit
+      // 2026-05-24: externalApplication for http URLs without the
+      // LSApplicationQueriesSchemes plist entry silently returned false.
       final ok = await launchUrl(
         Uri.parse(fullUrl),
-        mode: LaunchMode.externalApplication,
+        mode: LaunchMode.inAppBrowserView,
       );
       if (!ok && context.mounted) {
         showFeedback(context, "Couldn't open the file.", isError: true);

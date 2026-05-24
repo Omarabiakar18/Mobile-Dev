@@ -50,8 +50,13 @@ class _AddDocumentScreenState extends ConsumerState<AddDocumentScreen> {
     // (Multer LIMIT_FILE_SIZE → 413 FILE_TOO_LARGE). Surface the limit
     // locally so the user doesn't wait for the round-trip just to see
     // "too large". Caught in the 2026-05-24 HANDOFF as a 10-min fix.
+    //
+    // iOS gotcha: file_picker can return size=0 for files that live in
+    // iCloud and haven't been materialised locally yet — the size comes
+    // from NSItemProvider metadata before download. Treat 0 as "unknown,
+    // let the server enforce" rather than "definitely under the limit".
     const maxBytes = 5 * 1024 * 1024;
-    if (picked.size > maxBytes) {
+    if (picked.size > 0 && picked.size > maxBytes) {
       if (mounted) {
         showFeedback(
           context,

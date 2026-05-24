@@ -89,67 +89,88 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
         title: const Text('Permissions'),
         automaticallyImplyLeading: false,
       ),
+      // Cards scroll if needed (3rd card was added for Android battery
+      // guidance — overflows on landscape and small phones unless the
+      // Column is scrollable). Continue / Skip stay sticky at the bottom
+      // so they're always reachable. 2026-05-24 widget-test discovery.
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 8),
-              Text(
-                'A couple of permissions help Garage do more for you.',
-                style: theme.textTheme.titleMedium,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'You can grant or revoke either one later in your phone settings — nothing is irreversible.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 8),
+                    Text(
+                      'A couple of permissions help Garage do more for you.',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'You can grant or revoke either one later in your phone settings — nothing is irreversible.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    _PermissionCard(
+                      icon: Icons.notifications_active,
+                      title: 'Notifications',
+                      description:
+                          'So we can ping you about service reminders and document expiries before they sneak up on you.',
+                      buttonLabel:
+                          _notifGranted ? 'Allowed' : 'Allow notifications',
+                      buttonEnabled: !_notifGranted,
+                      busy: _busyNotif,
+                      onPressed: _requestNotifications,
+                    ),
+                    const SizedBox(height: 12),
+                    _PermissionCard(
+                      icon: Icons.location_on,
+                      title: 'Location',
+                      description:
+                          "Used to detect when you're at a known gas station so we can prompt a fill-up entry. "
+                          "When-In-Use is fine to start — Garage will ask for Always later if you opt into background auto-logging.",
+                      buttonLabel: _locGranted ? 'Allowed' : 'Allow location',
+                      buttonEnabled: !_locGranted,
+                      busy: _busyLoc,
+                      onPressed: _requestLocation,
+                    ),
+                    // Android-only: many OEMs (TECNO/HiOS, Xiaomi/MIUI,
+                    // Oppo, Vivo) kill background broadcasts that drive
+                    // scheduled notifications. Surface the battery-
+                    // whitelist guidance during onboarding so the user
+                    // knows what to do.
+                    if (defaultTargetPlatform == TargetPlatform.android) ...[
+                      const SizedBox(height: 12),
+                      const _BatteryWhitelistCard(),
+                    ],
+                    const SizedBox(height: 8),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              _PermissionCard(
-                icon: Icons.notifications_active,
-                title: 'Notifications',
-                description:
-                    'So we can ping you about service reminders and document expiries before they sneak up on you.',
-                buttonLabel: _notifGranted ? 'Allowed' : 'Allow notifications',
-                buttonEnabled: !_notifGranted,
-                busy: _busyNotif,
-                onPressed: _requestNotifications,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton(
+                    onPressed: _continue,
+                    child: const Text('Continue'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _continue,
+                    child: const Text('Skip for now'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              _PermissionCard(
-                icon: Icons.location_on,
-                title: 'Location',
-                description:
-                    "Used to detect when you're at a known gas station so we can prompt a fill-up entry. "
-                    "When-In-Use is fine to start — Garage will ask for Always later if you opt into background auto-logging.",
-                buttonLabel: _locGranted ? 'Allowed' : 'Allow location',
-                buttonEnabled: !_locGranted,
-                busy: _busyLoc,
-                onPressed: _requestLocation,
-              ),
-              // Android-only: many OEMs (TECNO/HiOS, Xiaomi/MIUI, Oppo,
-              // Vivo) kill background broadcasts that drive scheduled
-              // notifications. Surface the battery-whitelist guidance
-              // during onboarding so the user knows what to do.
-              if (defaultTargetPlatform == TargetPlatform.android) ...[
-                const SizedBox(height: 12),
-                const _BatteryWhitelistCard(),
-              ],
-              const Spacer(),
-              FilledButton(
-                onPressed: _continue,
-                child: const Text('Continue'),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: _continue,
-                child: const Text('Skip for now'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
