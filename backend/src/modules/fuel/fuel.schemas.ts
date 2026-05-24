@@ -21,7 +21,16 @@ export const createFuelSchema = z.object({
   receiptPhotoUrl: z.string().max(2048).optional(),
 });
 
-export const updateFuelSchema = createFuelSchema.partial();
+// PATCH-style: every field is optional AND nullable. Nullable so the mobile
+// edit form can clear an optional field (station/notes/etc.) by sending null
+// rather than having to omit it from the JSON body.
+export const updateFuelSchema = createFuelSchema.partial().extend({
+  station: z.string().max(120).trim().nullish(),
+  notes: z.string().max(1000).nullish(),
+  latitude: z.coerce.number().min(-90).max(90).nullish(),
+  longitude: z.coerce.number().min(-180).max(180).nullish(),
+  receiptPhotoUrl: z.string().max(2048).nullish(),
+});
 
 export const listQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),

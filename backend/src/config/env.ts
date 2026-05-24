@@ -20,7 +20,9 @@ const envSchema = z.object({
 
   LLM_PROVIDER: z.enum(['gemini', 'openai', 'anthropic']).default('gemini'),
   GEMINI_API_KEY: z.string().optional().default(''),
+  OPENAI_API_KEY: z.string().optional().default(''),
   LLM_MODEL: z.string().default('gemini-1.5-flash'),
+  OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
 
   DEMO_MODE: z

@@ -17,6 +17,7 @@ import 'features/cars/presentation/car_detail_screen.dart';
 import 'features/cars/presentation/cars_list_screen.dart';
 import 'features/documents/presentation/add_document_screen.dart';
 import 'features/documents/presentation/documents_list_screen.dart';
+import 'features/fuel/data/fuel_model.dart';
 import 'features/fuel/data/ocr_prefill_model.dart';
 import 'features/fuel/presentation/add_fuel_screen.dart';
 import 'features/fuel/presentation/fuel_stats_screen.dart';
@@ -112,6 +113,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/cars/:id/fuel/stats',
         builder: (_, state) =>
             FuelStatsScreen(carId: state.pathParameters['id']!),
+      ),
+
+      // Edit an existing fuel entry. The list screen passes the FuelEntry via
+      // `extra` so we don't need a round-trip to GET /fuel/:id.
+      GoRoute(
+        path: '/cars/:id/fuel/:fuelId/edit',
+        builder: (_, state) => AddFuelScreen(
+          carId: state.pathParameters['id']!,
+          existing: state.extra is FuelEntry ? state.extra as FuelEntry : null,
+        ),
       ),
 
       // Phase 4 — receipt OCR camera flow. Lands on the OCR screen, which

@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/ui/feedback.dart';
 import '../data/maintenance_api.dart';
 import '../data/maintenance_model.dart';
 
@@ -112,15 +113,15 @@ class _AddMaintenanceScreenState extends ConsumerState<AddMaintenanceScreen> {
       }
 
       ref.invalidate(maintenanceListProvider(widget.carId));
-      if (mounted) context.pop();
-    } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        showFeedback(context, 'Maintenance entry saved');
+        context.pop();
+      }
+    } on ApiException catch (e) {
+      if (mounted) showFeedback(context, e.message, isError: true);
+    } catch (_) {
+      if (mounted) {
+        showFeedback(context, 'Something went wrong. Please try again.', isError: true);
       }
     } finally {
       if (mounted) setState(() => _saving = false);

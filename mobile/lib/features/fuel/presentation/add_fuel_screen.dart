@@ -7,9 +7,11 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/api/base_url.dart';
+import '../../../core/ui/feedback.dart';
 import '../../cars/data/car_model.dart';
 import '../../cars/data/cars_api.dart';
 import '../data/fuel_api.dart';
+import '../data/fuel_model.dart';
 import '../data/ocr_prefill_model.dart';
 
 /// Confidence threshold under which we tint a field's border orange and
@@ -18,7 +20,12 @@ import '../data/ocr_prefill_model.dart';
 const double _kLowConfidenceThreshold = 0.7;
 
 class AddFuelScreen extends ConsumerStatefulWidget {
-  const AddFuelScreen({super.key, required this.carId, this.ocrPrefill});
+  const AddFuelScreen({
+    super.key,
+    required this.carId,
+    this.ocrPrefill,
+    this.existing,
+  });
 
   final String carId;
 
@@ -26,6 +33,13 @@ class AddFuelScreen extends ConsumerStatefulWidget {
   /// controllers from this payload and visually flags low-confidence values
   /// in orange. The user must still tap Save — OCR never auto-saves.
   final OcrPrefill? ocrPrefill;
+
+  /// When non-null, the screen runs in edit mode: form is seeded from this
+  /// entry, save calls PATCH /fuel/:id, and car prefill / OCR prefill are
+  /// skipped so we don't clobber the user's existing values.
+  final FuelEntry? existing;
+
+  bool get isEdit => existing != null;
 
   @override
   ConsumerState<AddFuelScreen> createState() => _AddFuelScreenState();
@@ -54,7 +68,27 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
     super.initState();
     _liters.addListener(_recomputeTotal);
     _pricePerLiter.addListener(_recomputeTotal);
-    _applyOcrPrefill();
+    if (widget.isEdit) {
+      _applyExisting(widget.existing!);
+    } else {
+      _applyOcrPrefill();
+    }
+  }
+
+  /// Seed all controllers from an existing fuel entry (edit mode). We mark
+  /// _prefilled true so the car-prefill listener in build() doesn't clobber
+  /// the user's existing values.
+  void _applyExisting(FuelEntry e) {
+    _prefilled = true;
+    _odometer.text = e.odometer.toString();
+    _liters.text = _formatNum(e.liters);
+    _pricePerLiter.text = _formatNum(e.pricePerLiter);
+    _totalCost.text = _formatNum(e.totalCost);
+    _station.text = e.station ?? '';
+    _notes.text = e.notes ?? '';
+    _date = e.date;
+    _fuelType = e.fuelType;
+    _isFullTank = e.isFullTank;
   }
 
   @override
@@ -116,29 +150,51 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      await ref.read(fuelApiProvider).create(
-            widget.carId,
-            date: _date,
-            odometer: int.parse(_odometer.text.trim()),
-            liters: double.parse(_liters.text.trim()),
-            pricePerLiter: double.parse(_pricePerLiter.text.trim()),
-            totalCost: double.parse(_totalCost.text.trim()),
-            fuelType: _fuelType,
-            station: _station.text.trim().isEmpty ? null : _station.text.trim(),
-            isFullTank: _isFullTank,
-            notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-            // Persist the receipt photo URL the OCR endpoint surfaced. The
-            // backend served it from /uploads/ocr/<hash>.jpg; saving it here
-            // means the fuel entry keeps a permanent link to the receipt.
-            receiptPhotoUrl: widget.ocrPrefill?.receiptPhotoUrl,
-          );
+      final station = _station.text.trim().isEmpty ? null : _station.text.trim();
+      final notes = _notes.text.trim().isEmpty ? null : _notes.text.trim();
+      if (widget.isEdit) {
+        await ref.read(fuelApiProvider).update(widget.existing!.id, {
+          'date': _date.toUtc().toIso8601String(),
+          'odometer': int.parse(_odometer.text.trim()),
+          'liters': double.parse(_liters.text.trim()),
+          'pricePerLiter': double.parse(_pricePerLiter.text.trim()),
+          'totalCost': double.parse(_totalCost.text.trim()),
+          'fuelType': _fuelType.name,
+          'station': station,
+          'isFullTank': _isFullTank,
+          'notes': notes,
+        });
+      } else {
+        await ref.read(fuelApiProvider).create(
+              widget.carId,
+              date: _date,
+              odometer: int.parse(_odometer.text.trim()),
+              liters: double.parse(_liters.text.trim()),
+              pricePerLiter: double.parse(_pricePerLiter.text.trim()),
+              totalCost: double.parse(_totalCost.text.trim()),
+              fuelType: _fuelType,
+              station: station,
+              isFullTank: _isFullTank,
+              notes: notes,
+              // Persist the receipt photo URL the OCR endpoint surfaced. The
+              // backend served it from /uploads/ocr/<hash>.jpg; saving it here
+              // means the fuel entry keeps a permanent link to the receipt.
+              receiptPhotoUrl: widget.ocrPrefill?.receiptPhotoUrl,
+            );
+      }
       ref.invalidate(fuelListProvider(widget.carId));
-      if (mounted) context.pop();
-    } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), behavior: SnackBarBehavior.floating),
+        showFeedback(
+          context,
+          widget.isEdit ? 'Changes saved' : 'Fuel entry saved',
         );
+        context.pop();
+      }
+    } on ApiException catch (e) {
+      if (mounted) showFeedback(context, e.message, isError: true);
+    } catch (_) {
+      if (mounted) {
+        showFeedback(context, 'Something went wrong. Please try again.', isError: true);
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -168,7 +224,7 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
                 ocr.confidenceFor(f) < _kLowConfidenceThreshold);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Log fuel')),
+      appBar: AppBar(title: Text(widget.isEdit ? 'Edit fuel entry' : 'Log fuel')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -294,7 +350,7 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Save fill-up'),
+                      : Text(widget.isEdit ? 'Save changes' : 'Save fill-up'),
                 ),
               ],
             ),

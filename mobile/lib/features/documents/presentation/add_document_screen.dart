@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/ui/feedback.dart';
 import '../../../core/notifications/scheduling_sync.dart';
 import '../data/document_model.dart';
 import '../data/documents_api.dart';
@@ -110,12 +111,15 @@ class _AddDocumentScreenState extends ConsumerState<AddDocumentScreen> {
       unawaited(
         ref.read(schedulingSyncProvider).syncForCar(widget.carId),
       );
-      if (mounted) context.pop();
-    } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), behavior: SnackBarBehavior.floating),
-        );
+        showFeedback(context, 'Document saved');
+        context.pop();
+      }
+    } on ApiException catch (e) {
+      if (mounted) showFeedback(context, e.message, isError: true);
+    } catch (_) {
+      if (mounted) {
+        showFeedback(context, 'Something went wrong. Please try again.', isError: true);
       }
     } finally {
       if (mounted) setState(() => _saving = false);

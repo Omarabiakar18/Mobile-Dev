@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/theme/tokens.dart';
+import '../../core/ui/status_chip.dart';
 import '../auth/presentation/auth_notifier.dart';
 import '../cars/data/car_model.dart';
 import '../cars/data/cars_api.dart';
@@ -178,6 +180,98 @@ class _CarHeader extends ConsumerWidget {
   }
 }
 
+/// Shared banner shell — card with a colored left bar, icon, two-line text,
+/// chevron, and a StatusChip in the corner. Reused by docs + reminders.
+class _AlertBanner extends StatelessWidget {
+  const _AlertBanner({
+    required this.color,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.chip,
+    required this.onTap,
+  });
+  final Color color;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget chip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                Container(width: 4, color: color),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(icon, color: color, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  chip,
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                subtitle,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.outline,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.chevron_right,
+                            size: 20, color: theme.colorScheme.outline),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ExpiringDocsBanner extends StatelessWidget {
   const _ExpiringDocsBanner({required this.docs, required this.carId});
   final List<Document> docs;
@@ -185,58 +279,34 @@ class _ExpiringDocsBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final tokens = context.tokens;
     final soonest = docs.first;
     final days = soonest.expiryDate.difference(DateTime.now()).inDays;
-    final dateStr = DateFormat.yMMMMd().format(soonest.expiryDate);
+    final dateStr = DateFormat.MMMd().format(soonest.expiryDate);
+    final overdue = days < 0;
+    final urgent = days >= 0 && days <= 14;
 
-    final color = days < 0
-        ? theme.colorScheme.error
-        : days <= 14
-            ? theme.colorScheme.error
-            : theme.colorScheme.secondary;
+    final color = overdue || urgent ? tokens.danger : tokens.warning;
+    final chip = overdue
+        ? StatusChip.overdue(label: 'Expired')
+        : urgent
+            ? StatusChip.overdue(label: '$days d')
+            : StatusChip.dueSoon(label: '$days d');
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => context.push('/cars/$carId/documents'),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.4)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.description_outlined, color: color),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      docs.length == 1
-                          ? '1 document expiring soon'
-                          : '${docs.length} documents expiring soon',
-                      style: theme.textTheme.titleSmall?.copyWith(color: color),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      days < 0
-                          ? '${soonest.type.label} expired $dateStr'
-                          : '${soonest.type.label} expires $dateStr (in $days days)',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: color),
-            ],
-          ),
-        ),
-      ),
+    final title = docs.length == 1
+        ? '${soonest.type.label} expiring'
+        : '${docs.length} documents expiring';
+    final subtitle = overdue
+        ? '${soonest.type.label} expired $dateStr'
+        : '${soonest.type.label} · $dateStr';
+
+    return _AlertBanner(
+      color: color,
+      icon: Icons.description_outlined,
+      title: title,
+      subtitle: subtitle,
+      chip: chip,
+      onTap: () => context.push('/cars/$carId/documents'),
     );
   }
 }
@@ -248,53 +318,30 @@ class _DueRemindersBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final tokens = context.tokens;
     final soonest = reminders.first;
-    final color = (soonest.daysRemaining ?? 0) < 0
-        ? theme.colorScheme.error
-        : Colors.amber.shade700;
+    final daysRemaining = soonest.daysRemaining ?? 0;
+    final overdue = daysRemaining < 0;
+    final color = overdue ? tokens.danger : tokens.warning;
+    final chip = overdue
+        ? StatusChip.overdue(label: '${-daysRemaining} d late')
+        : StatusChip.dueSoon(label: '$daysRemaining d');
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => context.push('/cars/$carId/reminders'),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.4)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.build_outlined, color: color),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      reminders.length == 1
-                          ? '1 service due soon'
-                          : '${reminders.length} services due soon',
-                      style: theme.textTheme.titleSmall?.copyWith(color: color),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      soonest.aiMessage ??
-                          '${soonest.serviceType}'
-                              '${soonest.daysRemaining != null ? ' — in ${soonest.daysRemaining} days' : ''}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: color),
-            ],
-          ),
-        ),
-      ),
+    final title = reminders.length == 1
+        ? soonest.serviceType
+        : '${reminders.length} services due';
+    final subtitle = soonest.aiMessage ??
+        (overdue
+            ? '${soonest.serviceType} was due ${-daysRemaining} days ago'
+            : '${soonest.serviceType} due in $daysRemaining days');
+
+    return _AlertBanner(
+      color: color,
+      icon: Icons.build_outlined,
+      title: title,
+      subtitle: subtitle,
+      chip: chip,
+      onTap: () => context.push('/cars/$carId/reminders'),
     );
   }
 }
@@ -507,95 +554,131 @@ class _OkCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     final liters = prediction.tankRemainingLiters ?? 0;
-    final litersStr = '${liters.toStringAsFixed(1)} L';
-    // Server returns fractional days (e.g. 10.6); round at render time so the
-    // display reads "10 days" while the underlying value preserves precision.
+    final tank = car.tankSize.toDouble();
+    final tankFraction = tank > 0 ? (liters / tank).clamp(0.0, 1.0) : 0.0;
+    final litersStr = liters.toStringAsFixed(1);
     final daysExact = prediction.daysRemaining;
     final days = daysExact?.round();
-
     final hasDate = days != null;
-    final daysColor = !hasDate
-        ? theme.colorScheme.onSurface
-        : (days <= 0
-            ? theme.colorScheme.error
-            : (days <= 3
-                ? Colors.amber.shade800
-                : theme.colorScheme.onSurface));
+    final isUrgent = hasDate && days <= 3;
+    final isOverdue = hasDate && days <= 0;
 
-    return Card(
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: () => _showExplainSheet(context),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Icon(
-                Icons.local_gas_station,
-                size: 40,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                tokens.hero,
+                Color.alphaBlend(Colors.black.withValues(alpha: 0.30), tokens.hero),
+              ],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Text('Next fill-up prediction',
-                        style: theme.textTheme.titleSmall),
-                    const SizedBox(height: 6),
-                    if (hasDate)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(
-                            '$days',
-                            style: theme.textTheme.headlineMedium?.copyWith(
-                              color: daysColor,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            days == 1 ? 'day' : 'days',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: daysColor,
-                            ),
-                          ),
-                          if (prediction.predictedDate != null) ...[
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                '≈ ${DateFormat.MMMd().format(prediction.predictedDate!)}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.outline,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ],
-                      )
-                    else
-                      Text(
-                        'Tank: ~$litersStr remaining',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                    const SizedBox(height: 4),
+                    Icon(Icons.local_gas_station,
+                        size: 18, color: Colors.white.withValues(alpha: 0.8)),
+                    const SizedBox(width: 8),
                     Text(
-                      hasDate
-                          ? '$litersStr left in tank'
-                          : 'Add daily driving data for date estimate',
+                      'Next fill-up',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (isOverdue)
+                      StatusChip.overdue(label: 'Now'),
+                    if (isUrgent && !isOverdue)
+                      StatusChip.dueSoon(label: 'Soon'),
+                    const SizedBox(width: 6),
+                    Icon(Icons.info_outline,
+                        size: 18, color: Colors.white.withValues(alpha: 0.7)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (hasDate)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        '$days',
+                        style: theme.textTheme.displayMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          height: 1.0,
+                          letterSpacing: -1.5,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          days == 1 ? 'day' : 'days',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      if (prediction.predictedDate != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text(
+                            '≈ ${DateFormat.MMMd().format(prediction.predictedDate!)}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: Colors.white.withValues(alpha: 0.75),
+                            ),
+                          ),
+                        ),
+                    ],
+                  )
+                else
+                  Text(
+                    '~$litersStr L',
+                    style: theme.textTheme.displaySmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                const SizedBox(height: 14),
+                _TankGauge(fraction: tankFraction, accent: tokens.accent),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Text(
+                      '$litersStr L of ${tank.toStringAsFixed(0)} L',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
+                        color: Colors.white.withValues(alpha: 0.75),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'Tap to explain',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
                 ),
-              ),
-              Icon(Icons.info_outline, color: theme.colorScheme.outline),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -610,6 +693,46 @@ class _OkCard extends StatelessWidget {
       builder: (sheetCtx) {
         return _ExplainSheet(car: car, prediction: prediction);
       },
+    );
+  }
+}
+
+/// Thin horizontal gauge for the hero card. Renders a translucent track with
+/// an amber-filled portion proportional to [fraction] (0–1).
+class _TankGauge extends StatelessWidget {
+  const _TankGauge({required this.fraction, required this.accent});
+  final double fraction;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Container(
+          height: 6,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+        FractionallySizedBox(
+          widthFactor: fraction.clamp(0.04, 1.0),
+          child: Container(
+            height: 6,
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.55),
+                  blurRadius: 6,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/ui/feedback.dart';
 import '../data/car_model.dart';
 import '../data/cars_api.dart';
 
@@ -54,12 +55,15 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
             tankSize: double.parse(_tankSize.text.trim()),
           );
       ref.invalidate(carsListProvider);
-      if (mounted) context.pop();
-    } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), behavior: SnackBarBehavior.floating),
-        );
+        showFeedback(context, 'Car added');
+        context.pop();
+      }
+    } on ApiException catch (e) {
+      if (mounted) showFeedback(context, e.message, isError: true);
+    } catch (_) {
+      if (mounted) {
+        showFeedback(context, 'Something went wrong. Please try again.', isError: true);
       }
     } finally {
       if (mounted) setState(() => _saving = false);

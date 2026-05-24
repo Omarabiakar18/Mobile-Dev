@@ -49,7 +49,9 @@ export const updateReminderSchema = z
 
 /** Query for `GET /cars/:carId/reminders/due`. */
 export const dueQuerySchema = z.object({
-  withinDays: z.coerce.number().int().min(1).max(365).default(30),
+  // Mobile reminders-list screen passes 99999 to mean "all time". No upper
+  // bound here — query is bounded by actual reminder rows, no DoS risk.
+  withinDays: z.coerce.number().int().min(1).default(30),
 });
 
 export type CreateReminderInput = z.infer<typeof createReminderSchema>;

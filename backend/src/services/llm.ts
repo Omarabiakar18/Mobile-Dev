@@ -1,15 +1,17 @@
 /**
- * LLM service — Gemini-backed text + strict-JSON completions.
+ * LLM service — text + strict-JSON + multimodal completions.
  *
  * Used by:
  *   - OCR (receipt field parsing — see spec §16-A)
  *   - Service reminders (AI-phrased messages — §16-B)
  *   - Fuel predict-next explainer (§16-C)
  *
+ * Providers: Gemini (default), OpenAI. Selected at boot via env.LLM_PROVIDER.
  * All consumers must provide a non-LLM fallback. This service throws on
  * timeout / network / JSON-parse failures so the caller can branch.
  */
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { z } from 'zod';
 
 import { env } from '../config/env';
@@ -50,6 +52,25 @@ export interface LlmProvider {
   ): Promise<T>;
 }
 
+function withTimeout<T>(p: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(
+      () => reject(new Error(`LLM call timed out after ${env.LLM_TIMEOUT_MS}ms`)),
+      env.LLM_TIMEOUT_MS,
+    );
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 class GeminiProvider implements LlmProvider {
   readonly name = 'gemini';
   private client: GoogleGenerativeAI;
@@ -72,28 +93,9 @@ class GeminiProvider implements LlmProvider {
     });
   }
 
-  private withTimeout<T>(p: Promise<T>): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const t = setTimeout(
-        () => reject(new Error(`LLM call timed out after ${env.LLM_TIMEOUT_MS}ms`)),
-        env.LLM_TIMEOUT_MS,
-      );
-      p.then(
-        (v) => {
-          clearTimeout(t);
-          resolve(v);
-        },
-        (e) => {
-          clearTimeout(t);
-          reject(e);
-        },
-      );
-    });
-  }
-
   async text(prompt: string, options?: LlmOptions): Promise<string> {
     const m = this.model(options);
-    const result = await this.withTimeout(m.generateContent(prompt));
+    const result = await withTimeout(m.generateContent(prompt));
     return result.response.text();
   }
 
@@ -113,7 +115,7 @@ class GeminiProvider implements LlmProvider {
   ): Promise<T> {
     const m = this.model({ ...options, temperature: options?.temperature ?? 0.1 });
     const fullPrompt = `${prompt}\n\nReturn ONLY valid JSON. No markdown fences, no commentary.`;
-    const result = await this.withTimeout(
+    const result = await withTimeout(
       m.generateContent([
         {
           inlineData: {
@@ -125,6 +127,96 @@ class GeminiProvider implements LlmProvider {
       ]),
     );
     return parseJsonResponse(result.response.text(), schema);
+  }
+}
+
+class OpenAiProvider implements LlmProvider {
+  readonly name = 'openai';
+  private client: OpenAI;
+
+  constructor() {
+    if (!env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is not set');
+    }
+    this.client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  }
+
+  async text(prompt: string, options?: LlmOptions): Promise<string> {
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+    if (options?.systemPrompt) {
+      messages.push({ role: 'system', content: options.systemPrompt });
+    }
+    messages.push({ role: 'user', content: prompt });
+
+    const result = await withTimeout(
+      this.client.chat.completions.create({
+        model: env.OPENAI_MODEL,
+        messages,
+        temperature: options?.temperature ?? 0.2,
+        max_tokens: options?.maxTokens ?? 300,
+      }),
+    );
+    return result.choices[0]?.message?.content ?? '';
+  }
+
+  async json<T>(prompt: string, schema: z.ZodType<T>, options?: LlmOptions): Promise<T> {
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+    if (options?.systemPrompt) {
+      messages.push({ role: 'system', content: options.systemPrompt });
+    }
+    messages.push({
+      role: 'user',
+      content: `${prompt}\n\nReturn ONLY valid JSON. No markdown fences, no commentary.`,
+    });
+
+    const result = await withTimeout(
+      this.client.chat.completions.create({
+        model: env.OPENAI_MODEL,
+        messages,
+        temperature: options?.temperature ?? 0.1,
+        max_tokens: options?.maxTokens ?? 300,
+        response_format: { type: 'json_object' },
+      }),
+    );
+    return parseJsonResponse(result.choices[0]?.message?.content ?? '', schema);
+  }
+
+  async imageJson<T>(
+    prompt: string,
+    image: LlmImageInput,
+    schema: z.ZodType<T>,
+    options?: LlmOptions,
+  ): Promise<T> {
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+    if (options?.systemPrompt) {
+      messages.push({ role: 'system', content: options.systemPrompt });
+    }
+    messages.push({
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: `${prompt}\n\nReturn ONLY valid JSON. No markdown fences, no commentary.`,
+        },
+        {
+          type: 'image_url',
+          image_url: {
+            url: `data:${image.mimeType};base64,${image.data.toString('base64')}`,
+          },
+        },
+      ],
+    });
+
+    const result = await withTimeout(
+      this.client.chat.completions.create({
+        model: env.OPENAI_MODEL,
+        messages,
+        temperature: options?.temperature ?? 0.1,
+        max_tokens: options?.maxTokens ?? 400,
+        response_format: { type: 'json_object' },
+      }),
+    );
+    return parseJsonResponse(result.choices[0]?.message?.content ?? '', schema);
   }
 }
 
@@ -159,6 +251,8 @@ export function llm(): LlmProvider {
       _provider = new GeminiProvider();
       return _provider;
     case 'openai':
+      _provider = new OpenAiProvider();
+      return _provider;
     case 'anthropic':
       throw new Error(`LLM_PROVIDER=${env.LLM_PROVIDER} not implemented yet`);
     default:

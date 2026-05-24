@@ -53,7 +53,13 @@ class FuelListScreen extends ConsumerWidget {
                   sliver: SliverList.separated(
                     itemCount: list.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (_, i) => _FuelCard(entry: list[i]),
+                    itemBuilder: (_, i) => _FuelCard(
+                      entry: list[i],
+                      onTap: () => context.push(
+                        '/cars/$carId/fuel/${list[i].id}/edit',
+                        extra: list[i],
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -71,8 +77,9 @@ class FuelListScreen extends ConsumerWidget {
 }
 
 class _FuelCard extends StatelessWidget {
-  const _FuelCard({required this.entry});
+  const _FuelCard({required this.entry, this.onTap});
   final FuelEntry entry;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -80,53 +87,57 @@ class _FuelCard extends StatelessWidget {
     final dateLabel = DateFormat.yMMMd().format(entry.date);
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: theme.colorScheme.secondaryContainer,
-              child: Icon(
-                entry.isFullTank
-                    ? Icons.local_gas_station
-                    : Icons.local_gas_station_outlined,
-                color: theme.colorScheme.onSecondaryContainer,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(dateLabel, style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 2),
-                  Text(
-                    entry.displaySummary(),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  if (entry.station != null && entry.station!.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      entry.station!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (entry.isFullTank)
-              Tooltip(
-                message: 'Full tank',
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: theme.colorScheme.secondaryContainer,
                 child: Icon(
-                  Icons.battery_full,
-                  size: 20,
-                  color: theme.colorScheme.primary,
+                  entry.isFullTank
+                      ? Icons.local_gas_station
+                      : Icons.local_gas_station_outlined,
+                  color: theme.colorScheme.onSecondaryContainer,
                 ),
               ),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(dateLabel, style: theme.textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(
+                      entry.displaySummary(),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    if (entry.station != null && entry.station!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        entry.station!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (entry.isFullTank)
+                Tooltip(
+                  message: 'Full tank',
+                  child: Icon(
+                    Icons.battery_full,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
