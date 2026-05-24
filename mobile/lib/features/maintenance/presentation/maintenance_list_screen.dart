@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/ui/connecting_state.dart';
 import '../data/maintenance_api.dart';
 import '../data/maintenance_model.dart';
 
@@ -22,7 +23,7 @@ class MaintenanceListScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(maintenanceListProvider(carId)),
         child: entries.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const ConnectingState(label: 'Loading maintenance…'),
           error: (e, _) => _ErrorState(
             message: e is ApiException ? e.message : e.toString(),
             onRetry: () => ref.invalidate(maintenanceListProvider(carId)),

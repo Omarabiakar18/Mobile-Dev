@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/ui/connecting_state.dart';
 import '../../../core/ui/status_chip.dart';
 import '../data/document_model.dart';
 import '../data/documents_api.dart';
@@ -22,7 +23,7 @@ class DocumentsListScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(documentsListProvider(carId)),
         child: docs.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const ConnectingState(label: 'Loading documents…'),
           error: (e, _) => _ErrorState(
             message: e is ApiException ? e.message : e.toString(),
             onRetry: () => ref.invalidate(documentsListProvider(carId)),

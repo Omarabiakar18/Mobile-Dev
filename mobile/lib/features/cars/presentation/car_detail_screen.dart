@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api/api_exception.dart';
+import '../../../core/ui/connecting_state.dart';
 import '../../documents/presentation/documents_list_screen.dart';
 import '../../fuel/presentation/fuel_list_screen.dart';
 import '../../maintenance/presentation/maintenance_list_screen.dart';
@@ -40,8 +42,16 @@ class CarDetailScreen extends ConsumerWidget {
           ),
         ),
         body: carsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('$e')),
+          loading: () => const ConnectingState(label: 'Loading car…'),
+          error: (e, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                e is ApiException ? e.message : 'Something went wrong.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
           data: (cars) {
             final car = cars.where((c) => c.id == carId).firstOrNull;
             if (car == null) {

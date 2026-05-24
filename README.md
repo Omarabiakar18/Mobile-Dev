@@ -65,13 +65,31 @@ Health check: `http://localhost:3000/health`.
 
 ### 3. Mobile app
 
+The app builds and runs on both Android and iOS. Pick whichever you have set up.
+
+**Android** (USB-tethered, fastest path):
 ```bash
 cd mobile
 flutter pub get
-open ios/Runner.xcworkspace         # one-time: configure signing in Xcode
-                                    # (set your Team under Runner ▸ Signing)
-flutter run                         # runs on simulator
+adb reverse tcp:3000 tcp:3000        # phone's localhost → Mac:3000
+flutter run --dart-define=API_BASE_URL=http://localhost:3000
 ```
+
+**iOS** (simulator or device):
+```bash
+cd mobile
+flutter pub get
+open ios/Runner.xcworkspace          # one-time: configure signing in Xcode
+                                     # (set your Team under Runner ▸ Signing)
+flutter run                          # runs on simulator
+```
+
+> **iOS one-time platform install.** When Xcode updates to a new major version
+> (e.g. 26.5), the matching iOS platform support has to be downloaded
+> separately — `flutter build ios` fails with *"iOS X.Y is not installed.
+> Please download and install the platform from Xcode > Settings > Components"*.
+> It's a ~7 GB one-time download. Until it's done, build for Android; the
+> feature set is identical.
 
 To run on a real iPhone over wifi:
 

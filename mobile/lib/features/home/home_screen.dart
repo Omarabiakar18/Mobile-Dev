@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/api/api_exception.dart';
 import '../../core/theme/tokens.dart';
+import '../../core/ui/connecting_state.dart';
 import '../../core/ui/status_chip.dart';
 import '../auth/presentation/auth_notifier.dart';
 import '../cars/data/car_model.dart';
@@ -46,9 +48,9 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       body: carsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const ConnectingState(label: 'Loading your garage…'),
         error: (e, _) => _ErrorBlock(
-          message: '$e',
+          message: e is ApiException ? e.message : 'Something went wrong.',
           onRetry: () => ref.invalidate(carsListProvider),
         ),
         data: (cars) {

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/ui/connecting_state.dart';
 import '../data/fuel_api.dart';
 import '../data/fuel_model.dart';
 
@@ -20,7 +21,7 @@ class FuelListScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(fuelListProvider(carId)),
         child: entries.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const ConnectingState(label: 'Loading fuel entries…'),
           error: (e, _) => _ErrorState(
             message: e is ApiException ? e.message : e.toString(),
             onRetry: () => ref.invalidate(fuelListProvider(carId)),

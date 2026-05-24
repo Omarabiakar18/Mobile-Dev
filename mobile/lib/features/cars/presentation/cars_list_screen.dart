@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/ui/connecting_state.dart';
 import '../../auth/presentation/auth_notifier.dart';
 import '../data/cars_api.dart';
 import '../data/car_model.dart';
@@ -28,7 +29,7 @@ class CarsListScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(carsListProvider),
         child: cars.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const ConnectingState(label: 'Loading your cars…'),
           error: (e, _) => _ErrorState(
             message: e is ApiException ? e.message : e.toString(),
             onRetry: () => ref.invalidate(carsListProvider),
