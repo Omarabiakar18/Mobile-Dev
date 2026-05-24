@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../core/ui/status_chip.dart';
 import '../data/reminder_model.dart';
 import '../data/reminders_api.dart';
 
@@ -49,92 +51,41 @@ class RemindersListScreen extends ConsumerWidget {
   }
 }
 
-/// Visual style bucket for a reminder, derived from `daysRemaining`.
-class _ProjectionStyle {
-  const _ProjectionStyle({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.emphasized,
-  });
-
-  final String label;
-  final IconData icon;
-  final Color color;
-  final bool emphasized;
-
-  /// `daysRemaining == null` → "Set an interval to see projection" muted.
-  /// `daysRemaining < 0` → red overdue.
-  /// `0 <= daysRemaining <= 7` → amber, bold.
-  /// `8..30` → normal text, bold.
-  /// `> 30` → normal text.
-  static _ProjectionStyle resolve(
-    BuildContext context,
-    ServiceReminder r,
-    DateFormat dateFmt,
-  ) {
-    final theme = Theme.of(context);
-    final days = r.daysRemaining;
-    if (days == null) {
-      return _ProjectionStyle(
-        label: 'Set an interval to see projection',
-        icon: Icons.schedule_outlined,
-        color: theme.colorScheme.outline,
-        emphasized: false,
-      );
-    }
-    final dateStr =
-        r.predictedDate == null ? '' : ' (${dateFmt.format(r.predictedDate!)})';
-
-    if (days < 0) {
-      return _ProjectionStyle(
-        label: 'Overdue by ${-days} ${(-days) == 1 ? 'day' : 'days'}$dateStr',
-        icon: Icons.error_outline,
-        color: theme.colorScheme.error,
-        emphasized: true,
-      );
-    }
-    if (days == 0) {
-      return _ProjectionStyle(
-        label: 'Due today$dateStr',
-        icon: Icons.warning_amber_rounded,
-        color: Colors.amber.shade800,
-        emphasized: true,
-      );
-    }
-    if (days <= 7) {
-      return _ProjectionStyle(
-        label: 'Due in $days ${days == 1 ? 'day' : 'days'}$dateStr',
-        icon: Icons.schedule,
-        color: Colors.amber.shade800,
-        emphasized: true,
-      );
-    }
-    if (days <= 30) {
-      return _ProjectionStyle(
-        label: 'Due in $days days$dateStr',
-        icon: Icons.schedule,
-        color: theme.colorScheme.onSurface,
-        emphasized: true,
-      );
-    }
-    // Beyond 30 days — show date for context, calmer emphasis.
-    return _ProjectionStyle(
-      label: 'Due in $days days$dateStr',
-      icon: Icons.schedule_outlined,
-      color: theme.colorScheme.onSurface,
-      emphasized: false,
-    );
-  }
-}
+enum _Urgency { none, ok, soon, overdue }
 
 class _ReminderCard extends StatelessWidget {
   const _ReminderCard({required this.reminder});
   final ServiceReminder reminder;
 
+  _Urgency get _urgency {
+    final days = reminder.daysRemaining;
+    if (days == null) return _Urgency.none;
+    if (days < 0) return _Urgency.overdue;
+    if (days <= 30) return _Urgency.soon;
+    return _Urgency.ok;
+  }
+
+  Widget? _buildChip() {
+    final days = reminder.daysRemaining;
+    if (days == null) return null;
+    switch (_urgency) {
+      case _Urgency.overdue:
+        return StatusChip.overdue(label: '${-days} d late');
+      case _Urgency.soon:
+        return days <= 7
+            ? StatusChip.dueSoon(label: days == 0 ? 'Today' : '$days d')
+            : StatusChip.dueSoon(label: '$days d');
+      case _Urgency.ok:
+        return StatusChip.ok(label: '$days d');
+      case _Urgency.none:
+        return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.tokens;
     final dateFmt = DateFormat.yMMMd();
     final kmFmt = NumberFormat.decimalPattern('en_US');
 
@@ -145,100 +96,120 @@ class _ReminderCard extends StatelessWidget {
         'every ${reminder.intervalMonths} mo',
     ];
 
-    final style = _ProjectionStyle.resolve(context, reminder, dateFmt);
+    final headlineColor = switch (_urgency) {
+      _Urgency.overdue => tokens.danger,
+      _Urgency.soon => tokens.warning,
+      _Urgency.ok => theme.colorScheme.onSurface,
+      _Urgency.none => theme.colorScheme.outline,
+    };
+    final headline = reminder.predictedDate != null
+        ? 'Due ${dateFmt.format(reminder.predictedDate!)}'
+        : 'No projection';
+
+    final chip = _buildChip();
 
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    reminder.serviceType,
-                    style: theme.textTheme.titleLarge,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        reminder.serviceType,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        headline,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          color: headlineColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (!reminder.isActive)
+                if (chip != null) chip
+                else if (!reminder.isActive)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(
-                      'Paused',
-                      style: theme.textTheme.bodySmall,
-                    ),
+                    child: Text('Paused', style: theme.textTheme.labelSmall),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Last done at ${kmFmt.format(reminder.lastDoneKm)} km '
-              'on ${dateFmt.format(reminder.lastDoneDate)}',
-              style: theme.textTheme.bodyMedium,
-            ),
-            if (intervalParts.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Interval: ${intervalParts.join(' · ')}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(
-                  style.icon,
-                  size: 18,
-                  color: style.color,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    style.label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: style.color,
-                      fontWeight: style.emphasized ? FontWeight.w600 : null,
-                    ),
-                  ),
-                ),
               ],
             ),
             if (reminder.aiMessage != null && reminder.aiMessage!.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(8),
+                  color: tokens.accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: tokens.accent.withValues(alpha: 0.25)),
                 ),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.auto_awesome,
-                      size: 16,
-                      color: theme.colorScheme.onSecondaryContainer,
-                    ),
-                    const SizedBox(width: 6),
+                    Icon(Icons.auto_awesome, size: 16, color: tokens.accent),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         reminder.aiMessage!,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSecondaryContainer,
+                          color: theme.colorScheme.onSurface,
+                          height: 1.4,
                         ),
                       ),
                     ),
                   ],
                 ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Divider(height: 1, color: theme.colorScheme.outline.withValues(alpha: 0.2)),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(Icons.history, size: 14, color: theme.colorScheme.outline),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Last: ${kmFmt.format(reminder.lastDoneKm)} km · ${dateFmt.format(reminder.lastDoneDate)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (intervalParts.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.repeat, size: 14, color: theme.colorScheme.outline),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      intervalParts.join(' · '),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ],

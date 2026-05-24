@@ -128,54 +128,145 @@ class _CarHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final tokens = context.tokens;
+    final multipleCars = allCars.length > 1;
+    final kmFormatted = NumberFormat.decimalPattern('en_US').format(car.currentKm);
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: theme.colorScheme.secondaryContainer,
-              child: Icon(
-                Icons.directions_car_filled,
-                color: theme.colorScheme.onSecondaryContainer,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: multipleCars ? () => _openSwitcher(context, ref) : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: tokens.accent.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.directions_car_filled,
+                  color: tokens.accent,
+                ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (allCars.length > 1)
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isDense: true,
-                        value: car.id,
-                        items: [
-                          for (final c in allCars)
-                            DropdownMenuItem(value: c.id, child: Text(c.displayName)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            car.displayName,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (multipleCars) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.unfold_more,
+                            size: 18,
+                            color: theme.colorScheme.outline,
+                          ),
                         ],
-                        onChanged: (id) {
-                          if (id != null) {
-                            ref.read(selectedCarIdProvider.notifier).state = id;
-                          }
-                        },
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${car.plate} · $kmFormatted km',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.outline,
                       ),
-                    )
-                  else
-                    Text(car.displayName, style: theme.textTheme.titleLarge),
-                  Text(
-                    '${car.plate} · ${car.currentKm} km',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  void _openSwitcher(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) {
+        final theme = Theme.of(sheetCtx);
+        final tokens = sheetCtx.tokens;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Switch car', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 12),
+                for (final c in allCars)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: c.id == car.id
+                            ? tokens.accent.withValues(alpha: 0.20)
+                            : theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.directions_car_filled,
+                        color: c.id == car.id
+                            ? tokens.accent
+                            : theme.colorScheme.outline,
+                      ),
+                    ),
+                    title: Text(c.displayName),
+                    subtitle: Text(
+                      '${c.plate} · ${NumberFormat.decimalPattern('en_US').format(c.currentKm)} km',
+                    ),
+                    trailing: c.id == car.id
+                        ? Icon(Icons.check_circle,
+                            color: tokens.success, size: 20)
+                        : null,
+                    onTap: () {
+                      ref.read(selectedCarIdProvider.notifier).state = c.id;
+                      Navigator.of(sheetCtx).pop();
+                    },
+                  ),
+                const Divider(height: 24),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.add, color: theme.colorScheme.outline),
+                  ),
+                  title: const Text('Add another car'),
+                  onTap: () {
+                    Navigator.of(sheetCtx).pop();
+                    context.push('/cars/new');
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1050,23 +1141,35 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.tokens;
     final enabled = onTap != null;
     final fg = enabled ? theme.colorScheme.onSurface : theme.colorScheme.outline;
 
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 28, color: fg),
-              const SizedBox(height: 8),
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: tokens.accent.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 22, color: tokens.accent),
+              ),
+              const SizedBox(height: 10),
               Text(
                 label,
-                style: theme.textTheme.bodySmall?.copyWith(color: fg),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w500,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],

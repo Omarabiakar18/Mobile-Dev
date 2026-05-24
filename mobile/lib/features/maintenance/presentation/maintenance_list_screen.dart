@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/theme/tokens.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -56,30 +58,54 @@ class _MaintenanceCard extends StatelessWidget {
     final dateFmt = DateFormat.yMMMd();
     final costFmt = NumberFormat.simpleCurrency(decimalDigits: 2);
 
+    final tokens = Theme.of(context).extension<GarageColors>()!;
+
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: theme.colorScheme.secondaryContainer,
-              child: Icon(
-                _iconFor(entry.type),
-                color: theme.colorScheme.onSecondaryContainer,
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: tokens.accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
               ),
+              child: Icon(_iconFor(entry.type), color: tokens.accent),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(entry.type.label, style: theme.textTheme.titleMedium),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          entry.type.label,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        costFmt.format(entry.cost),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: tokens.accent,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 2),
                   Text(
-                    '${dateFmt.format(entry.date.toLocal())} '
-                    '· ${entry.km} km',
-                    style: theme.textTheme.bodySmall,
+                    '${dateFmt.format(entry.date.toLocal())} · '
+                    '${NumberFormat.decimalPattern('en_US').format(entry.km)} km',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
                   ),
                   if (entry.description != null &&
                       entry.description!.isNotEmpty) ...[
@@ -93,11 +119,6 @@ class _MaintenanceCard extends StatelessWidget {
                   ],
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              costFmt.format(entry.cost),
-              style: theme.textTheme.titleMedium,
             ),
           ],
         ),

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/theme/tokens.dart';
 import '../data/fuel_api.dart';
 import '../data/fuel_model.dart';
 
@@ -86,56 +87,75 @@ class _FuelCard extends StatelessWidget {
     final theme = Theme.of(context);
     final dateLabel = DateFormat.yMMMd().format(entry.date);
 
+    final tokens = context.tokens;
+    final fuelColor = entry.isFullTank ? tokens.success : tokens.accent;
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: theme.colorScheme.secondaryContainer,
-                child: Icon(
-                  entry.isFullTank
-                      ? Icons.local_gas_station
-                      : Icons.local_gas_station_outlined,
-                  color: theme.colorScheme.onSecondaryContainer,
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: fuelColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                child: Icon(Icons.local_gas_station, color: fuelColor),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(dateLabel, style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 2),
-                    Text(
-                      entry.displaySummary(),
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    if (entry.station != null && entry.station!.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        entry.station!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.outline,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            dateLabel,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                        Text(
+                          '${entry.liters.toStringAsFixed(entry.liters % 1 == 0 ? 0 : 1)} L',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: tokens.accent,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            entry.station != null && entry.station!.isNotEmpty
+                                ? entry.station!
+                                : '${entry.fuelType.name} · ${NumberFormat.decimalPattern('en_US').format(entry.odometer)} km',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.outline,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Text(
+                          '\$${entry.totalCost.toStringAsFixed(2)}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.outline,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              if (entry.isFullTank)
-                Tooltip(
-                  message: 'Full tank',
-                  child: Icon(
-                    Icons.battery_full,
-                    size: 20,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
             ],
           ),
         ),

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -74,6 +75,58 @@ class _OcrCameraScreenState extends ConsumerState<OcrCameraScreen> {
             : null,
       ),
     );
+  }
+
+  /// Debug-only: load a fixed receipt JPEG from the app's external dir at
+  /// `/sdcard/Android/data/com.garage.app/files/garage-test/receipt.jpg`.
+  /// Bypasses the system gallery picker entirely so adb-driven testing never
+  /// touches the user's actual photo library. The asset is pushed via
+  /// `adb push` ahead of testing.
+  Future<void> _startWithTestReceipt() async {
+    setState(() {
+      _stage = _Stage.processing;
+      _processingLabel = 'Loading test receipt…';
+    });
+    try {
+      final externalDir = await getExternalStorageDirectory();
+      if (externalDir == null) {
+        _showError('External storage not available on this device.', offerManual: true);
+        if (mounted) setState(() => _stage = _Stage.picking);
+        return;
+      }
+      final src = File(p.join(externalDir.path, 'garage-test', 'receipt.jpg'));
+      if (!await src.exists()) {
+        _showError(
+          'No test receipt at garage-test/receipt.jpg — push one via adb first.',
+          offerManual: true,
+        );
+        if (mounted) setState(() => _stage = _Stage.picking);
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() => _processingLabel = 'Preparing photo…');
+      final compressed = await _compress(src);
+
+      if (!mounted) return;
+      setState(() => _processingLabel = 'Reading receipt…');
+      final prefill = await ref
+          .read(fuelApiProvider)
+          .ocrReceipt(widget.carId, compressed);
+
+      if (prefill.failed) {
+        _showError("Couldn't read the test receipt. Check the image.");
+        if (mounted) setState(() => _stage = _Stage.picking);
+        return;
+      }
+      _goPrefilled(prefill);
+    } on ApiException catch (e) {
+      _showError('OCR failed: ${e.message}');
+      if (mounted) setState(() => _stage = _Stage.picking);
+    } catch (e) {
+      _showError("Couldn't read the test receipt: $e");
+      if (mounted) setState(() => _stage = _Stage.picking);
+    }
   }
 
   Future<void> _start(ImageSource source) async {
@@ -199,6 +252,7 @@ class _OcrCameraScreenState extends ConsumerState<OcrCameraScreen> {
                   onCamera: () => _start(ImageSource.camera),
                   onLibrary: () => _start(ImageSource.gallery),
                   onManual: _goManual,
+                  onTestReceipt: kDebugMode ? _startWithTestReceipt : null,
                 ),
         ),
       ),
@@ -212,12 +266,14 @@ class _PickerView extends StatelessWidget {
     required this.onCamera,
     required this.onLibrary,
     required this.onManual,
+    this.onTestReceipt,
   });
 
   final ThemeData theme;
   final VoidCallback onCamera;
   final VoidCallback onLibrary;
   final VoidCallback onManual;
+  final VoidCallback? onTestReceipt;
 
   @override
   Widget build(BuildContext context) {
@@ -271,6 +327,14 @@ class _PickerView extends StatelessWidget {
             onPressed: onManual,
             child: const Text('Skip — enter manually'),
           ),
+          if (onTestReceipt != null) ...[
+            const SizedBox(height: 4),
+            TextButton.icon(
+              onPressed: onTestReceipt,
+              icon: const Icon(Icons.bug_report_outlined, size: 18),
+              label: const Text('debug · pick test receipt'),
+            ),
+          ],
         ],
       ),
     );

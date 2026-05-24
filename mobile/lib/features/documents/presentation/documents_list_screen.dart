@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/theme/tokens.dart';
+import '../../../core/ui/status_chip.dart';
 import '../data/document_model.dart';
 import '../data/documents_api.dart';
 
@@ -48,51 +50,70 @@ class _DocumentCard extends StatelessWidget {
   const _DocumentCard({required this.document});
   final Document document;
 
+  Widget _buildChip(BuildContext context) {
+    final days = document.daysUntilExpiry;
+    if (days < 0) return StatusChip.overdue(label: 'Expired');
+    if (days == 0) return StatusChip.overdue(label: 'Today');
+    if (days <= 30) return StatusChip.dueSoon(label: '$days d');
+    return StatusChip.ok(label: '$days d');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.tokens;
     final urgent = document.isExpired || document.isExpiringSoon;
-    final color = urgent ? theme.colorScheme.error : theme.colorScheme.onSurface;
+    final iconColor = urgent ? tokens.danger : tokens.accent;
+    final iconBg = urgent
+        ? tokens.danger.withValues(alpha: 0.12)
+        : tokens.accent.withValues(alpha: 0.14);
 
     return Card(
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
         onTap: () => _showDetails(context, document),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: theme.colorScheme.secondaryContainer,
-                child: Icon(
-                  document.type.icon,
-                  color: theme.colorScheme.onSecondaryContainer,
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                child: Icon(document.type.icon, color: iconColor),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(document.type.label, style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 2),
-                    Text(
-                      DateFormat.yMMMMd().format(document.expiryDate),
-                      style: theme.textTheme.bodySmall,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            document.type.label,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        _buildChip(context),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _expiryPhrase(document),
+                      'Expires ${DateFormat.yMMMd().format(document.expiryDate)}',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: color,
-                        fontWeight: urgent ? FontWeight.w600 : FontWeight.normal,
+                        color: theme.colorScheme.outline,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right),
             ],
           ),
         ),

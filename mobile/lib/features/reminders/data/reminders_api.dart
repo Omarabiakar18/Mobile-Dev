@@ -101,15 +101,15 @@ final remindersApiProvider = Provider<RemindersApi>((ref) {
 
 /// Auto-refreshing reminders list for a given car.
 ///
-/// Phase 3: switched from `/cars/:carId/reminders` to `/due?withinDays=99999`
-/// so every reminder row carries a server-projected `predictedDate` and
-/// `daysRemaining` (spec §6.2). The plain list endpoint omits projection,
-/// which makes the cards harder to make actionable.
+/// Uses `GET /cars/:carId/reminders` — the full list including
+/// deterministic projection (`predictedDate`, `daysRemaining`) and any
+/// cached `aiMessage`. Does NOT trigger Gemini calls — that's `/due`'s job
+/// for the home banner.
 ///
 /// Invalidate via `ref.invalidate(remindersListProvider(carId))` after mutations.
 final remindersListProvider =
     FutureProvider.family<List<ServiceReminder>, String>((ref, carId) async {
-  return ref.watch(remindersApiProvider).due(carId, withinDays: 99999);
+  return ref.watch(remindersApiProvider).listForCar(carId);
 });
 
 /// Due-within-30-days list, used by the home dashboard banner.

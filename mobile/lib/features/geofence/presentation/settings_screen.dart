@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../core/notifications/notifications_service.dart';
+import '../../../core/notifications/scheduling_sync.dart';
+import '../../../core/ui/feedback.dart';
 import '../../auth/presentation/auth_notifier.dart';
 import '../data/gas_station_model.dart';
 import '../services/geofence_service_wrapper.dart';
@@ -80,10 +83,60 @@ class SettingsScreen extends ConsumerWidget {
               ),
               onTap: () => _onSimulateTapped(context, ref),
             ),
+            ListTile(
+              leading: const Icon(Icons.notifications_active_outlined),
+              title: const Text('Fire test notification in 60s'),
+              subtitle: const Text(
+                'Schedules a one-shot local notification 60 seconds from now',
+              ),
+              onTap: () => _onFireTestNotification(context, ref),
+            ),
+            ListTile(
+              leading: const Icon(Icons.sync),
+              title: const Text('Force schedule resync'),
+              subtitle: const Text(
+                'Re-runs SchedulingSync across every car (reminders + docs)',
+              ),
+              onTap: () => _onForceResync(context, ref),
+            ),
           ],
         ],
       ),
     );
+  }
+
+  Future<void> _onFireTestNotification(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final notifications = ref.read(notificationsServiceProvider);
+    final when = DateTime.now().add(const Duration(seconds: 60));
+    final id = await notifications.scheduleAt(
+      when,
+      title: 'Garage test notification',
+      body: 'Scheduled at ${TimeOfDay.fromDateTime(when).format(context)} — '
+          'if you see this, the notification pipeline works.',
+      payload: const {'route': '/settings'},
+    );
+    if (!context.mounted) return;
+    showFeedback(
+      context,
+      id < 0
+          ? 'Failed to schedule notification'
+          : 'Scheduled — wait ~60s with app in background',
+      isError: id < 0,
+    );
+  }
+
+  Future<void> _onForceResync(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(schedulingSyncProvider).syncForAllCars();
+      if (!context.mounted) return;
+      showFeedback(context, 'Notification schedule resynced');
+    } catch (e) {
+      if (!context.mounted) return;
+      showFeedback(context, 'Resync failed: $e', isError: true);
+    }
   }
 
   Future<void> _onSimulateTapped(BuildContext context, WidgetRef ref) async {
