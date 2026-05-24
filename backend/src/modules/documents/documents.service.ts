@@ -36,13 +36,26 @@ function buildDiskPath(documentId: string, ext: string): string {
 /**
  * Asserts the document exists, the parent car is owned by the user, and
  * returns the document. Used by every by-id handler.
+ *
+ * Single-query form: includes only `car.userId` so a concurrent car delete
+ * can't open a TOCTOU window between two reads. Also returns 404 (not
+ * 403) when the document genuinely doesn't exist, so the error doesn't
+ * leak whether `documentId` exists in the table. Caught by the 2026-05-24
+ * backend audit.
  */
 async function assertOwnsDocument(userId: string, documentId: string): Promise<Document> {
-  const doc = await prisma.document.findUnique({ where: { id: documentId } });
+  const doc = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { car: { select: { userId: true } } },
+  });
   if (!doc) throw new NotFoundError('Document not found');
-  const car = await prisma.car.findUnique({ where: { id: doc.carId } });
-  if (!car || car.userId !== userId) throw new ForbiddenError('You do not own this document');
-  return doc;
+  if (doc.car.userId !== userId) {
+    throw new ForbiddenError('You do not own this document');
+  }
+  // Strip the included relation so the returned shape matches `Document`
+  // (the caller doesn't expect `doc.car` on the result).
+  const { car: _car, ...rest } = doc;
+  return rest;
 }
 
 export async function listForCar(

@@ -29,11 +29,18 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
+    <!--
+        usesCleartextTraffic is intentionally NOT set on the main manifest
+        (release builds use HTTPS only). The debug variant at
+        app/src/debug/AndroidManifest.xml re-adds it with tools:replace so
+        local development against http://localhost:3000 still works.
+        Caught by the 2026-05-24 security audit — having cleartext on the
+        release manifest defeats TLS for any prod build.
+    -->
     <application
         android:label="Garage"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true"
         tools:targetApi="33">
         <activity
             android:name=".MainActivity"

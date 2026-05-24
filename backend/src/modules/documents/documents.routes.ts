@@ -33,9 +33,16 @@ const ALLOWED_MIMES = new Set([
 const upload = multer({
   storage: multer.diskStorage({
     destination: path.join(env.UPLOADS_DIR, 'documents', 'tmp'),
-    filename: (_req, file, cb) => {
+    // Temp filename uses ONLY our generated token — never `file.originalname`.
+    // Multer does not sanitize originalname, so a client supplying
+    // `../../../etc/passwd` or similar would escape `tmp/` during the
+    // upload phase. The permanent file is later renamed to `<uuid>.<ext>`
+    // via buildDiskPath() (safe), but the temp write must also be safe in
+    // case of a partial upload or crash mid-flight. Caught by the
+    // 2026-05-24 backend audit.
+    filename: (_req, _file, cb) => {
       const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      cb(null, `${unique}-${file.originalname}`);
+      cb(null, unique);
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB

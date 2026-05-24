@@ -79,11 +79,19 @@ export async function refresh(refreshToken: string): Promise<AuthResult> {
     throw new AuthError('Invalid or expired refresh token');
   }
 
-  // Rotate: revoke the old, issue a new pair.
-  await prisma.refreshToken.update({
-    where: { id: stored.id },
+  // Atomic revoke. `updateMany` with a `revokedAt: null` predicate becomes
+  // a compare-and-swap at the DB level: only the first racer flips the row,
+  // subsequent callers get `count: 0` and throw. Prevents a double-spend
+  // window where two concurrent requests both pass the `!stored.revokedAt`
+  // check in the findUnique above and each issue a fresh token pair from
+  // a single refresh token. Caught by the 2026-05-24 backend audit.
+  const revoked = await prisma.refreshToken.updateMany({
+    where: { id: stored.id, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+  if (revoked.count === 0) {
+    throw new AuthError('Invalid or expired refresh token');
+  }
 
   const tokens = await issueTokens(stored.userId);
   return { user: toPublic(stored.user), ...tokens };

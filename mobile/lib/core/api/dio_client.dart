@@ -28,16 +28,31 @@ class DioClient {
         validateStatus: (s) => s != null && s < 500,
       ),
     );
-    // Order matters: retry runs FIRST (so 401-refresh logic only sees
-    // requests that actually came back). Auth runs second so retried
-    // requests still pick up the latest bearer token.
+    // Order matters. dio fires onResponse in REVERSE order of insertion
+    // (last-added runs first), so we add:
     //
-    // The retry interceptor reuses `dio` itself for the retried call so the
-    // retried request goes through every other interceptor and inherits the
-    // project's validateStatus / contentType / responseType — otherwise the
-    // response shape arrives as a raw JSON string and callers like
-    // `cars_api.list()` get an empty list out of `r.data?['data']?['cars']`.
+    //   1. _TransientRetryInterceptor — retries connection/timeout errors
+    //      (only fires for `onError`, not `onResponse`).
+    //   2. _Non2xxResponseInterceptor — catches non-401 4xx/5xx responses
+    //      and converts them into DioException(badResponse), so every API
+    //      method's `on DioException catch (e)` block routes through
+    //      ApiException.fromDio. Without this, validateStatus (s < 500)
+    //      lets 4xx through to callers that do `r.data!['data']['x']` on a
+    //      `{error:{...}}` payload, crashing on null deref. Added before
+    //      _AuthInterceptor so auth's onResponse 401-handling fires FIRST
+    //      on the response chain (reverse insertion order).
+    //   3. _AuthInterceptor — attaches the bearer token on request, and on
+    //      response detects 401s, runs single-flight refresh, and re-issues
+    //      the original request with the new token.
+    //
+    // The retry interceptor reuses `dio` itself for the retried call so
+    // the retried request goes through every other interceptor and
+    // inherits the project's validateStatus / contentType / responseType
+    // — otherwise the response shape arrives as a raw JSON string and
+    // callers like `cars_api.list()` get an empty list out of
+    // `r.data?['data']?['cars']`.
     dio.interceptors.add(_TransientRetryInterceptor(this));
+    dio.interceptors.add(_Non2xxResponseInterceptor());
     dio.interceptors.add(_AuthInterceptor(this));
   }
 
@@ -133,6 +148,37 @@ class _TransientRetryInterceptor extends Interceptor {
       // Hand the latest failure back so onError chains correctly.
       handler.next(e);
     }
+  }
+}
+
+/// Converts non-401 4xx/5xx responses into `DioException(badResponse)` so
+/// every API method's existing `on DioException catch (e) => throw
+/// ApiException.fromDio(e)` block converts cleanly to a user-facing
+/// error. Without this, [DioClient]'s `validateStatus: s < 500` lets 4xx
+/// pass through and callers force-unwrap `r.data!['data']['x']` against a
+/// `{error:{...}}` payload, hitting a null deref at runtime — a real bug
+/// surfaced by the 2026-05-24 backend audit.
+///
+/// 401 is intentionally pass-through here: the next interceptor
+/// (_AuthInterceptor) catches it in onResponse, runs single-flight refresh,
+/// and resolves the response. If refresh fails, _AuthInterceptor propagates
+/// the 401 down the chain and this interceptor (which runs AFTER auth on
+/// the response path, per reverse-insertion order) then rejects it like
+/// any other 4xx.
+class _Non2xxResponseInterceptor extends Interceptor {
+  @override
+  void onResponse(Response<dynamic> response, ResponseInterceptorHandler handler) {
+    final status = response.statusCode;
+    if (status != null && status >= 400 && status != 401) {
+      handler.reject(DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        type: DioExceptionType.badResponse,
+        error: 'HTTP $status',
+      ));
+      return;
+    }
+    handler.next(response);
   }
 }
 
