@@ -42,7 +42,9 @@ class MaintenanceApi {
     }
   }
 
-  Future<MaintenanceEntry> create({
+  /// Wraps the create response so the caller knows about the cross-update.
+  /// `updatedReminderIds.length` is what the UI shows in the toast.
+  Future<CreateMaintenanceResult> create({
     required String carId,
     required DateTime date,
     required int km,
@@ -64,9 +66,15 @@ class MaintenanceApi {
           if (notes != null && notes.isNotEmpty) 'notes': notes,
         },
       );
-      return MaintenanceEntry.fromJson(
-        r.data!['data']['maintenance'] as Map<String, dynamic>,
+      final data = (r.data!['data'] as Map).cast<String, dynamic>();
+      final entry = MaintenanceEntry.fromJson(
+        data['maintenance'] as Map<String, dynamic>,
       );
+      // `updatedReminderIds` is additive on the backend — older builds and
+      // proxies may strip it, so default to an empty list rather than null
+      // here. Defensive against partial deploys.
+      final ids = (data['updatedReminderIds'] as List?)?.cast<String>() ?? const [];
+      return CreateMaintenanceResult(entry: entry, updatedReminderIds: ids);
     } on DioException catch (e) {
       throw ApiException.fromDio(e);
     }

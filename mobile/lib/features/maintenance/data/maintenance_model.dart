@@ -125,3 +125,17 @@ class MaintenanceEntry {
     return double.tryParse(v.toString()) ?? 0;
   }
 }
+
+/// Wrapper for the POST /cars/:id/maintenance response so the caller knows
+/// whether any service reminders were auto-bumped by the cross-update
+/// (Alaa's #3 in HANDOFF.md). The add-maintenance form uses
+/// `updatedReminderIds.length` to enrich the success toast.
+class CreateMaintenanceResult {
+  CreateMaintenanceResult({
+    required this.entry,
+    required this.updatedReminderIds,
+  });
+
+  final MaintenanceEntry entry;
+  final List<String> updatedReminderIds;
+}

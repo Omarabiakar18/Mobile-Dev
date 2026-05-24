@@ -86,12 +86,19 @@ carScopedMaintenanceRouter.post(
   '/',
   validateBody(createMaintenanceSchema),
   asyncHandler(async (req, res) => {
-    const entry = await maintenanceService.create(
+    const result = await maintenanceService.create(
       req.userId!,
       req.params.carId,
       req.body,
     );
-    ok(res, { maintenance: entry }, 201);
+    // `maintenance` keeps the original shape so existing clients don't
+    // break. `updatedReminderIds` is additive — Alaa's #3 cross-update —
+    // letting the mobile UI surface "saved + N reminders updated".
+    ok(
+      res,
+      { maintenance: result.entry, updatedReminderIds: result.updatedReminderIds },
+      201,
+    );
   }),
 );
 

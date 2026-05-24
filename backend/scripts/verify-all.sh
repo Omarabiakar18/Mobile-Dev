@@ -55,7 +55,8 @@ ok "tsc clean"
 for script in scripts/verify-phase3-math.ts \
               scripts/verify-phase4-ocr.ts \
               scripts/verify-phase4-llm.ts \
-              scripts/verify-phase5-geo.ts; do
+              scripts/verify-phase5-geo.ts \
+              scripts/verify-phase6-cross-update.ts; do
   step "backend: $script"
   npx --no-install tsx "$script"
   ok "$(basename "$script") passed"

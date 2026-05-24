@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/ui/feedback.dart';
+import '../../reminders/data/reminders_api.dart';
 import '../data/maintenance_api.dart';
 import '../data/maintenance_model.dart';
 
@@ -84,7 +85,7 @@ class _AddMaintenanceScreenState extends ConsumerState<AddMaintenanceScreen> {
     setState(() => _saving = true);
     try {
       final api = ref.read(maintenanceApiProvider);
-      final entry = await api.create(
+      final result = await api.create(
         carId: widget.carId,
         date: _date,
         km: int.parse(_km.text.trim()),
@@ -99,7 +100,7 @@ class _AddMaintenanceScreenState extends ConsumerState<AddMaintenanceScreen> {
       // saved — surface the error but keep the rest going.
       for (final f in _pendingPhotos) {
         try {
-          await api.addPhoto(entry.id, f);
+          await api.addPhoto(result.entry.id, f);
         } on ApiException catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -113,8 +114,24 @@ class _AddMaintenanceScreenState extends ConsumerState<AddMaintenanceScreen> {
       }
 
       ref.invalidate(maintenanceListProvider(widget.carId));
+
+      // Cross-update side effect (Alaa's #3): when the backend bumped one or
+      // more reminders, invalidate the reminders list provider so the home
+      // banner + reminders tab reflect the new lastDone* immediately, and
+      // enrich the success toast with the count so the user sees the
+      // connection between the two features.
+      final bumped = result.updatedReminderIds.length;
+      if (bumped > 0) {
+        ref.invalidate(remindersListProvider(widget.carId));
+      }
+
       if (mounted) {
-        showFeedback(context, 'Maintenance entry saved');
+        final msg = bumped == 0
+            ? 'Maintenance entry saved'
+            : bumped == 1
+                ? 'Maintenance saved · 1 reminder updated'
+                : 'Maintenance saved · $bumped reminders updated';
+        showFeedback(context, msg);
         context.pop();
       }
     } on ApiException catch (e) {
