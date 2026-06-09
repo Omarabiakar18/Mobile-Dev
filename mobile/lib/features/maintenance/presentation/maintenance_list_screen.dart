@@ -105,7 +105,7 @@ class _MaintenanceCard extends StatelessWidget {
                     '${dateFmt.format(entry.date.toLocal())} · '
                     '${NumberFormat.decimalPattern('en_US').format(entry.km)} km',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.outline,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                   if (entry.description != null &&
@@ -158,7 +158,7 @@ class _EmptyState extends StatelessWidget {
         Icon(
           Icons.build_outlined,
           size: 80,
-          color: theme.colorScheme.outline,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
         const SizedBox(height: 16),
         Text(

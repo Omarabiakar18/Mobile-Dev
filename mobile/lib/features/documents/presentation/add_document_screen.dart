@@ -189,7 +189,9 @@ class _AddDocumentScreenState extends ConsumerState<AddDocumentScreen> {
                                   _picked == null
                                       ? 'PDF or image, up to 5 MB'
                                       : _formatBytes(_picked!.size),
-                                  style: theme.textTheme.bodySmall,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ],
                             ),

@@ -1,5 +1,10 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import type { Car } from '@prisma/client';
 
+import { env } from '../../config/env';
+import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import { ForbiddenError, NotFoundError } from '../../lib/errors';
 import { recomputeAvgKmPerDay } from '../../lib/avg-km-per-day';
@@ -64,4 +69,55 @@ export async function update(userId: string, carId: string, input: UpdateCarInpu
 export async function remove(userId: string, carId: string) {
   await assertOwnsCar(userId, carId);
   await prisma.car.delete({ where: { id: carId } });
+}
+
+// ---------- Photo ----------------------------------------------------
+
+/**
+ * Sets (or replaces) a car's photo. The blob was already written to disk by
+ * multer.diskStorage under `<UPLOADS_DIR>/cars/<uuid>.<ext>`; we just point the
+ * row at it. If the car already had a locally-uploaded photo, that old file is
+ * unlinked best-effort so we don't accumulate orphans. Mirrors the
+ * maintenance-photo flow. Returns the updated car.
+ */
+export async function setPhoto(
+  userId: string,
+  carId: string,
+  file: Express.Multer.File,
+) {
+  const car = await assertOwnsCar(userId, carId);
+  const newUrl = `/uploads/cars/${file.filename}`;
+  const oldUrl = car.photoUrl;
+
+  const updated = await prisma.car.update({
+    where: { id: carId },
+    data: { photoUrl: newUrl },
+  });
+
+  // Unlink the previous file only AFTER the row is safely repointed. If we
+  // unlinked first and the update then threw, the row would reference a file
+  // that no longer exists; this ordering means a failed update leaves the old
+  // file intact and only ever risks a recoverable orphan, never a dangling ref.
+  if (oldUrl && oldUrl !== newUrl) {
+    await unlinkUploadFile(oldUrl);
+  }
+
+  return updated;
+}
+
+/**
+ * Best-effort unlink of a previously-uploaded file. Only touches paths under
+ * the served `/uploads/` tree — external URLs (seed data, http...) are left
+ * alone. The path comes from our own stored `photoUrl`, never user input.
+ */
+async function unlinkUploadFile(urlPath: string): Promise<void> {
+  const prefix = '/uploads/';
+  if (!urlPath.startsWith(prefix)) return;
+  const rel = urlPath.slice(prefix.length);
+  const abs = path.resolve(env.UPLOADS_DIR, rel);
+  try {
+    await fs.unlink(abs);
+  } catch (err) {
+    logger.warn({ err, abs }, 'Failed to unlink old car photo file');
+  }
 }

@@ -22,6 +22,7 @@ import 'features/fuel/data/ocr_prefill_model.dart';
 import 'features/fuel/presentation/add_fuel_screen.dart';
 import 'features/fuel/presentation/fuel_stats_screen.dart';
 import 'features/fuel/presentation/ocr_camera_screen.dart';
+import 'features/geofence/presentation/geofence_live_screen.dart';
 import 'features/geofence/presentation/settings_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/home/splash_screen.dart';
@@ -105,6 +106,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           ocrPrefill: state.extra is OcrPrefill
               ? state.extra as OcrPrefill
               : null,
+          // The live geofence screen passes the detected station name as a
+          // String extra so the fuel form opens pre-filled with it.
+          stationPrefill: state.extra is String ? state.extra as String : null,
         ),
       ),
 
@@ -172,6 +176,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Phase 5 — settings (incl. simulate-geofence debug button in
       // non-release builds, per spec §9 screen 13).
       GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
+
+      // Live geofence-detection demo screen (real GPS + arrival detection).
+      GoRoute(
+        path: '/geofence/live',
+        builder: (_, _) => const GeofenceLiveScreen(),
+      ),
     ],
   );
 
@@ -185,10 +195,17 @@ final routerProvider = Provider<GoRouter>((ref) {
   final tapSub = notifications.onTap.listen((tap) {
     final route = tap.route;
     if (route == null || route.isEmpty) return;
+    // Geofence arrival taps carry the station name in the payload — pass it
+    // through as `extra` so the fuel form opens pre-filled with the station.
+    final station = tap.payload['stationName'];
     // Defer to the next microtask so we don't navigate during a build.
     scheduleMicrotask(() {
       try {
-        router.go(route);
+        if (station != null && station.isNotEmpty && route.contains('/fuel/new')) {
+          router.go(route, extra: station);
+        } else {
+          router.go(route);
+        }
       } catch (_) {
         // Unknown / malformed route — drop silently.
       }

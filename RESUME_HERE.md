@@ -4,14 +4,24 @@ If you're returning to this Claude chat (or starting a new one), paste this file
 into your first message. It captures all non-obvious state so the assistant can
 pick up where you left off without re-deriving it.
 
+> ⚠️ **PARTIALLY SUPERSEDED — read [`HANDOFF.md`](./HANDOFF.md) and
+> [`README.md`](./README.md) first; they reflect the current state.** This file
+> is kept for its hard-won iOS/Neon gotchas (§7, §14), but three headline facts
+> below drifted after it was written:
+> - **Owners:** co-owned by **Alaa Hassan & Omar Abi Akar** (not Omar alone).
+> - **Bundle / package id:** `com.garage.app` on **both** platforms (the old
+>   `com.omarabiakarmobiledev.garage` / `com.omar.garage` ids are retired).
+> - **Platform:** runs on **Android *and* iOS** now — the "iOS-only" framing is
+>   no longer true (Android verified on a real device; see HANDOFF.md).
+
 ---
 
 ## 1. What the project is
 
-**Garage** — a Flutter (iOS) + Node.js + TypeScript car-companion app for a
-university final project. Owner: Omar Abi Akar. Spec lives in
-[`GARAGE_PROJECT_SPEC.md`](./GARAGE_PROJECT_SPEC.md) — that's the source of
-truth for design decisions.
+**Garage** — a Flutter (iOS + Android) + Node.js + TypeScript car-companion app
+for a university final project. Co-owned by Alaa Hassan & Omar Abi Akar. Spec
+lives in [`GARAGE_PROJECT_SPEC.md`](./GARAGE_PROJECT_SPEC.md) — that's the source
+of truth for design decisions.
 
 Five locked features:
 1. Multi-car profiles (cars + maintenance + fuel + documents + expiry alerts)
@@ -74,10 +84,10 @@ e2236cd chore: switch dev database from local Docker to Neon
 - Image preprocess: `sharp` (greyscale → contrast → upscale to ≥1200px JPEG)
 
 ### Mobile (`mobile/`)
-- Flutter, **iOS-only target** (free Apple personal cert)
+- Flutter, **iOS + Android target** (free Apple personal cert for iOS; see banner)
 - State: `flutter_riverpod`
 - HTTP: `dio` with single-flight 401-refresh interceptor
-- Storage: `flutter_secure_storage` (iOS Keychain) + `sqflite` for local cache
+- Storage: `flutter_secure_storage` (iOS Keychain / Android Keystore) + `sqflite` for local cache
 - Navigation: `go_router` with auth-redirect via `_AuthRefresh` ChangeNotifier
 - Photos: `image_picker` → `image_cropper` → `flutter_image_compress`
 - Documents: `file_picker` (PDF support)
@@ -178,9 +188,10 @@ The signed app on the iPhone stops launching after 7 days. Fix: re-run
 `flutter run` to re-sign. Set a calendar reminder.
 
 ### Bundle ID
-Currently `com.omarabiakarmobiledev.garage` (set in Xcode → Runner target →
-Signing & Capabilities). Don't change it casually — Apple's free tier limits
-you to 10 unique bundle IDs ever.
+Now `com.garage.app` on both Runner and RunnerTests targets (was
+`com.omarabiakarmobiledev.garage` — retired in the 2026-05-24 rename; set in
+Xcode → Runner target → Signing & Capabilities). Don't change it casually —
+Apple's free tier limits you to 10 unique bundle IDs ever.
 
 ### `geofence_service` package is discontinued but kept
 Replacement is `geofencing_api`. We pinned `^6.0.0+1` and it works on iOS.
@@ -282,7 +293,7 @@ mobile/
 
 - iPhone: "Omar's iPhone", iOS 26.4
 - Mac LAN IP at last check: **192.168.33.110**
-- Bundle ID on the device: `com.omarabiakarmobiledev.garage`
+- Bundle ID on the device: `com.garage.app`
 - Apple ID: `abiakaromar18@icloud.com`
 - Provisioning: Xcode-managed, free personal team
 - Background modes in Info.plist: only `location` (NOT `fetch`)

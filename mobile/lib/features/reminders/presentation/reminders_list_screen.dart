@@ -101,7 +101,7 @@ class _ReminderCard extends StatelessWidget {
       _Urgency.overdue => tokens.danger,
       _Urgency.soon => tokens.warning,
       _Urgency.ok => theme.colorScheme.onSurface,
-      _Urgency.none => theme.colorScheme.outline,
+      _Urgency.none => theme.colorScheme.onSurfaceVariant,
     };
     final headline = reminder.predictedDate != null
         ? 'Due ${dateFmt.format(reminder.predictedDate!)}'
@@ -180,17 +180,17 @@ class _ReminderCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
-            Divider(height: 1, color: theme.colorScheme.outline.withValues(alpha: 0.2)),
+            Divider(height: 1, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.2)),
             const SizedBox(height: 10),
             Row(
               children: [
-                Icon(Icons.history, size: 14, color: theme.colorScheme.outline),
+                Icon(Icons.history, size: 14, color: theme.colorScheme.onSurfaceVariant),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     'Last: ${kmFmt.format(reminder.lastDoneKm)} km · ${dateFmt.format(reminder.lastDoneDate)}',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.outline,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -200,13 +200,13 @@ class _ReminderCard extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  Icon(Icons.repeat, size: 14, color: theme.colorScheme.outline),
+                  Icon(Icons.repeat, size: 14, color: theme.colorScheme.onSurfaceVariant),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       intervalParts.join(' · '),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ),
@@ -233,7 +233,7 @@ class _EmptyState extends StatelessWidget {
         Icon(
           Icons.notifications_active_outlined,
           size: 80,
-          color: theme.colorScheme.outline,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
         const SizedBox(height: 16),
         Text(

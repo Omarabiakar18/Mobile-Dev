@@ -112,7 +112,7 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
                     Text(
                       'You can grant or revoke either one later in your phone settings — nothing is irreversible.',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -268,7 +268,14 @@ class _PermissionCard extends StatelessWidget {
               children: [
                 Icon(icon, color: theme.colorScheme.primary),
                 const SizedBox(width: 12),
-                Text(title, style: theme.textTheme.titleMedium),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),

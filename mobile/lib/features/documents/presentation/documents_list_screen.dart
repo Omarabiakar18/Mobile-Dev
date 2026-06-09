@@ -112,7 +112,7 @@ class _DocumentCard extends StatelessWidget {
                     Text(
                       'Expires ${DateFormat.yMMMd().format(document.expiryDate)}',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -174,7 +174,7 @@ class _DocumentCard extends StatelessWidget {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: (d.isExpired || d.isExpiringSoon)
                         ? theme.colorScheme.error
-                        : theme.colorScheme.outline,
+                        : theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -237,10 +237,17 @@ class _MetaRow extends StatelessWidget {
             width: 80,
             child: Text(
               label,
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
-          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodyMedium,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
@@ -257,7 +264,7 @@ class _EmptyState extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 80),
       children: [
-        Icon(Icons.folder_open, size: 80, color: theme.colorScheme.outline),
+        Icon(Icons.folder_open, size: 80, color: theme.colorScheme.onSurfaceVariant),
         const SizedBox(height: 16),
         Text(
           'No documents yet',

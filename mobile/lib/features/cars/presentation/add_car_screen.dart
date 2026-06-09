@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/ui/feedback.dart';
@@ -26,6 +29,10 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
   final _tankSize = TextEditingController(text: '50');
   FuelType _fuelType = FuelType.gasoline;
 
+  /// Optional car photo picked locally. Uploaded after the car row is created
+  /// (we need its id), mirroring the maintenance-photo flow.
+  File? _pendingPhoto;
+
   bool _saving = false;
 
   @override
@@ -40,23 +47,56 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
     super.dispose();
   }
 
+  Future<void> _pickPhoto() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        setState(() => _pendingPhoto = File(picked.path));
+      }
+    } catch (e) {
+      if (mounted) showFeedback(context, "Couldn't pick image: $e", isError: true);
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      await ref.read(carsApiProvider).create(
-            make: _make.text.trim(),
-            model: _model.text.trim(),
-            year: int.parse(_year.text.trim()),
-            plate: _plate.text.trim(),
-            color: _color.text.trim().isEmpty ? null : _color.text.trim(),
-            currentKm: int.parse(_currentKm.text.trim()),
-            fuelType: _fuelType,
-            tankSize: double.parse(_tankSize.text.trim()),
-          );
+      final api = ref.read(carsApiProvider);
+      final car = await api.create(
+        make: _make.text.trim(),
+        model: _model.text.trim(),
+        year: int.parse(_year.text.trim()),
+        plate: _plate.text.trim(),
+        color: _color.text.trim().isEmpty ? null : _color.text.trim(),
+        currentKm: int.parse(_currentKm.text.trim()),
+        fuelType: _fuelType,
+        tankSize: double.parse(_tankSize.text.trim()),
+      );
+
+      // Upload the photo as a second step if one was picked. The car is
+      // already saved, so a photo failure shouldn't lose the user's work —
+      // surface it but still treat the car as added.
+      var photoFailed = false;
+      if (_pendingPhoto != null) {
+        try {
+          await api.setPhoto(car.id, _pendingPhoto!);
+        } catch (_) {
+          photoFailed = true;
+        }
+      }
+
       ref.invalidate(carsListProvider);
       if (mounted) {
-        showFeedback(context, 'Car added');
+        showFeedback(
+          context,
+          photoFailed ? 'Car added — photo upload failed' : 'Car added',
+          isError: photoFailed,
+        );
         context.pop();
       }
     } on ApiException catch (e) {
@@ -82,6 +122,14 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _PhotoPicker(
+                  photo: _pendingPhoto,
+                  onTap: _saving ? null : _pickPhoto,
+                  onRemove: _pendingPhoto == null
+                      ? null
+                      : () => setState(() => _pendingPhoto = null),
+                ),
+                const SizedBox(height: 16),
                 _Field(
                   controller: _make,
                   label: 'Make',
@@ -209,6 +257,68 @@ class _Field extends StatelessWidget {
         inputFormatters: formatters,
         decoration: InputDecoration(labelText: label, hintText: hint),
         validator: validator,
+      ),
+    );
+  }
+}
+
+/// Tappable car-photo well shown at the top of the add-car form. Renders the
+/// picked local file or an "Add photo" placeholder. Optional — a car can be
+/// saved without one.
+class _PhotoPicker extends StatelessWidget {
+  const _PhotoPicker({
+    required this.photo,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  final File? photo;
+  final VoidCallback? onTap;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          height: 160,
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: photo == null
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_a_photo_outlined,
+                        size: 36, color: theme.colorScheme.onSurfaceVariant),
+                    const SizedBox(height: 8),
+                    Text('Add a photo (optional)',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                  ],
+                )
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.file(photo!, fit: BoxFit.cover),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Material(
+                        color: Colors.black54,
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          iconSize: 18,
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          tooltip: 'Remove photo',
+                          onPressed: onRemove,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }

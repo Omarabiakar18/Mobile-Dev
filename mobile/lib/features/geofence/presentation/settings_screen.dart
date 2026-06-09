@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/notifications/notifications_service.dart';
@@ -74,6 +75,15 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: const Text('Open phone settings to manage'),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () => openAppSettings(),
+          ),
+          ListTile(
+            leading: Icon(Icons.radar, color: theme.colorScheme.primary),
+            title: const Text('Live geofence detection'),
+            subtitle: const Text(
+              'Real-time GPS + gas-station arrival detection',
+            ),
+            trailing: const Icon(Icons.chevron_right, size: 18),
+            onTap: () => context.push('/geofence/live'),
           ),
 
           // Android-only: explain why scheduled notifications can fail on

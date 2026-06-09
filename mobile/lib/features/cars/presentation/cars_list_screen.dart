@@ -1,8 +1,10 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/api/base_url.dart';
 import '../../../core/ui/connecting_state.dart';
 import '../../auth/presentation/auth_notifier.dart';
 import '../data/cars_api.dart';
@@ -68,24 +70,24 @@ class _CarCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: theme.colorScheme.secondaryContainer,
-                child: Icon(
-                  Icons.directions_car_filled,
-                  color: theme.colorScheme.onSecondaryContainer,
-                ),
-              ),
+              _CarAvatar(photoUrl: car.photoUrl),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(car.displayName, style: theme.textTheme.titleMedium),
+                    Text(
+                      car.displayName,
+                      style: theme.textTheme.titleMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     const SizedBox(height: 2),
                     Text(
                       '${car.plate} · ${car.currentKm.toString()} km',
                       style: theme.textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -94,6 +96,41 @@ class _CarCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Circular car thumbnail: the uploaded photo if present, otherwise the
+/// default car icon. Falls back to the icon if the image fails to load.
+class _CarAvatar extends StatelessWidget {
+  const _CarAvatar({required this.photoUrl});
+  final String? photoUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fallback = CircleAvatar(
+      radius: 28,
+      backgroundColor: theme.colorScheme.secondaryContainer,
+      child: Icon(
+        Icons.directions_car_filled,
+        color: theme.colorScheme.onSecondaryContainer,
+      ),
+    );
+
+    if (photoUrl == null || photoUrl!.isEmpty) return fallback;
+    final fullUrl =
+        photoUrl!.startsWith('http') ? photoUrl! : '$apiBaseUrl$photoUrl';
+
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: fullUrl,
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+        placeholder: (_, _) => fallback,
+        errorWidget: (_, _, _) => fallback,
       ),
     );
   }
@@ -112,7 +149,7 @@ class _EmptyState extends StatelessWidget {
         Icon(
           Icons.directions_car_filled_outlined,
           size: 80,
-          color: theme.colorScheme.outline,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
         const SizedBox(height: 16),
         Text(

@@ -1,7 +1,7 @@
 # Garage — Smart Car Companion App
 
 University final project · Mobile Development · Antonine University.
-Flutter (iOS) + Node.js / TypeScript backend.
+Flutter (iOS + Android) + Node.js / TypeScript backend.
 
 > The single source of truth for the design is [`GARAGE_PROJECT_SPEC.md`](./GARAGE_PROJECT_SPEC.md).
 > The 5-minute demo flow lives in [`DEMO.md`](./DEMO.md).
@@ -26,9 +26,9 @@ Plus three LLM touchpoints (spec §16): receipt extraction (§16-A), AI-phrased 
 
 **Backend** — Node.js 20 + TypeScript + Express + Prisma + Postgres (Neon cloud) + Gemini multimodal SDK. JWT access + refresh tokens. Per-route rate limiting. Cron job at 03:00 daily for `avgKmPerDay` recompute.
 
-**Mobile** — Flutter 3.x (iOS only) + Riverpod + dio (with single-flight 401-refresh interceptor) + go_router + flutter_secure_storage (Keychain) + sqflite (local cache) + flutter_local_notifications + geofence_service + image_picker / image_cropper / file_picker.
+**Mobile** — Flutter 3.x (iOS + Android) + Riverpod + dio (with single-flight 401-refresh interceptor) + go_router + flutter_secure_storage (Keychain / Keystore) + sqflite (local cache) + flutter_local_notifications + geofence_service + image_picker / image_cropper / file_picker.
 
-**No Docker required for dev.** Postgres runs on Neon (free tier). The only local prereqs are Node, Flutter, and Xcode.
+**No Docker required for dev.** Postgres runs on Neon (free tier). The only local prereqs are Node, Flutter, and a device toolchain — Xcode for iOS or the Android SDK for Android.
 
 ---
 
@@ -38,9 +38,10 @@ Plus three LLM touchpoints (spec §16): receipt extraction (§16-A), AI-phrased 
 
 - Node.js 20+
 - A free [Neon](https://neon.tech) Postgres project
-- Flutter 3.x with the iOS toolchain (Xcode 16+)
-- A free Apple developer account (for sideloading to a real iPhone)
-- A free [Google AI Studio](https://aistudio.google.com/apikey) API key for Gemini
+- Flutter 3.x with a device toolchain:
+  - **iOS** — Xcode 16+ and a free Apple developer account (for sideloading to a real iPhone)
+  - **Android** — the Android SDK + `adb` (Android Studio, or command-line tools)
+- A free [Google AI Studio](https://aistudio.google.com/apikey) API key for Gemini (or an OpenAI key — the LLM provider is env-selectable)
 
 ### 1. Database — Neon
 

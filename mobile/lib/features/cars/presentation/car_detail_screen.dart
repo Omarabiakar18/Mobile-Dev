@@ -1,8 +1,14 @@
+import 'dart:io';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/api/base_url.dart';
 import '../../../core/ui/connecting_state.dart';
+import '../../../core/ui/feedback.dart';
 import '../../documents/presentation/documents_list_screen.dart';
 import '../../fuel/presentation/fuel_list_screen.dart';
 import '../../maintenance/presentation/maintenance_list_screen.dart';
@@ -83,6 +89,8 @@ class _OverviewTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _CarPhotoHeader(car: car),
+        const SizedBox(height: 16),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -110,6 +118,135 @@ class _OverviewTab extends StatelessWidget {
   }
 }
 
+/// Photo well at the top of the Overview tab. Shows the car's photo (or a
+/// placeholder) and lets the user set/replace it via `POST /cars/:id/photo`.
+/// Stateful so it can show an upload spinner; on success it invalidates
+/// `carsListProvider` so the new `photoUrl` propagates everywhere (list card,
+/// home switcher, this header).
+class _CarPhotoHeader extends ConsumerStatefulWidget {
+  const _CarPhotoHeader({required this.car});
+  final Car car;
+
+  @override
+  ConsumerState<_CarPhotoHeader> createState() => _CarPhotoHeaderState();
+}
+
+class _CarPhotoHeaderState extends ConsumerState<_CarPhotoHeader> {
+  bool _uploading = false;
+
+  Future<void> _pickAndUpload() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      setState(() => _uploading = true);
+      await ref.read(carsApiProvider).setPhoto(widget.car.id, File(picked.path));
+      ref.invalidate(carsListProvider);
+      if (mounted) showFeedback(context, 'Photo updated');
+    } on ApiException catch (e) {
+      if (mounted) showFeedback(context, e.message, isError: true);
+    } catch (_) {
+      if (mounted) {
+        showFeedback(context, "Couldn't update photo. Please try again.",
+            isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final photoUrl = widget.car.photoUrl;
+    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
+    // Direct null check (not `!hasPhoto`) so Dart promotes `photoUrl` to
+    // non-null inside the else branch.
+    final fullUrl = (photoUrl == null || photoUrl.isEmpty)
+        ? null
+        : (photoUrl.startsWith('http') ? photoUrl : '$apiBaseUrl$photoUrl');
+
+    return GestureDetector(
+      onTap: _uploading ? null : _pickAndUpload,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          height: 180,
+          width: double.infinity,
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (fullUrl != null)
+                CachedNetworkImage(
+                  imageUrl: fullUrl,
+                  fit: BoxFit.cover,
+                  placeholder: (_, _) => const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  errorWidget: (_, _, _) => _placeholder(theme),
+                )
+              else
+                _placeholder(theme),
+
+              // "Change / Add photo" affordance.
+              Positioned(
+                right: 8,
+                bottom: 8,
+                child: Material(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.photo_camera_outlined,
+                            size: 16, color: Colors.white),
+                        const SizedBox(width: 6),
+                        Text(
+                          hasPhoto ? 'Change' : 'Add photo',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              if (_uploading)
+                Container(
+                  color: Colors.black26,
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _placeholder(ThemeData theme) => Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.directions_car_filled_outlined,
+              size: 44, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(height: 8),
+          Text('Tap to add a photo',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        ],
+      );
+}
+
 class _InfoRow extends StatelessWidget {
   const _InfoRow({required this.label, required this.value});
   final String label;
@@ -126,7 +263,7 @@ class _InfoRow extends StatelessWidget {
             width: 110,
             child: Text(label,
                 style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.outline)),
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           ),
           Expanded(
             child: Text(value, style: theme.textTheme.bodyMedium),

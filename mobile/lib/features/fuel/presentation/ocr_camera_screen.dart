@@ -300,7 +300,7 @@ class _PickerView extends StatelessWidget {
             "We'll read the liters, price, and total automatically. "
             "You can fix anything before saving.",
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.outline,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
             textAlign: TextAlign.center,
           ),
@@ -370,7 +370,7 @@ class _ProcessingView extends StatelessWidget {
             Text(
               'This usually takes a couple of seconds.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),

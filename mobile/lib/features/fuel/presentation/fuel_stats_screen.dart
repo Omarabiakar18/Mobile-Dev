@@ -55,7 +55,7 @@ class _StatsBody extends StatelessWidget {
           Icon(
             Icons.local_gas_station_outlined,
             size: 80,
-            color: theme.colorScheme.outline,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
           const SizedBox(height: 16),
           Text(
@@ -141,7 +141,7 @@ class _StatsBody extends StatelessWidget {
                           'based on ${stats.fillCount} '
                           '${stats.fillCount == 1 ? 'fill-up' : 'fill-ups'}',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.outline,
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ] else
@@ -208,7 +208,7 @@ class _BigNumberCard extends StatelessWidget {
             Text(
               label,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
@@ -284,17 +284,24 @@ class _MiniMetric extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          value,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            maxLines: 1,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         const SizedBox(height: 2),
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.outline,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ],

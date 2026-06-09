@@ -1,8 +1,8 @@
 # Garage — Smart Car Companion App
 
-**Owner:** Omar Abi Akar (Senior Computer Engineering, Antonine University)
+**Owners:** Alaa Hassan & Omar Abi Akar (co-owners) · Antonine University
 **Status:** Brainstorm complete · spec locked · ready for implementation
-**Last updated:** 2026-04-30
+**Last updated:** 2026-04-30 (design locked; for current build state see [`HANDOFF.md`](./HANDOFF.md) + [`README.md`](./README.md))
 
 ---
 

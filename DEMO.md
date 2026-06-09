@@ -13,7 +13,7 @@ showing it for real.
 
 ## The narrative
 
-> "Garage is a smart car-companion app I built solo. It tracks fuel,
+> "Garage is a smart car-companion app we built. It tracks fuel,
 > maintenance, documents, and reminders for multiple cars — and it gets
 > smarter the more you use it. The five things I want to show you are:
 > a multi-car dashboard with predictive math, a real receipt-OCR via Gemini

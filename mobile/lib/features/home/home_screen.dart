@@ -176,7 +176,7 @@ class _CarHeader extends ConsumerWidget {
                           Icon(
                             Icons.unfold_more,
                             size: 18,
-                            color: theme.colorScheme.outline,
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ],
                       ],
@@ -185,7 +185,7 @@ class _CarHeader extends ConsumerWidget {
                     Text(
                       '${car.plate} · $kmFormatted km',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -235,7 +235,7 @@ class _CarHeader extends ConsumerWidget {
                             Icons.directions_car_filled,
                             color: c.id == car.id
                                 ? tokens.accent
-                                : theme.colorScheme.outline,
+                                : theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                         title: Text(c.displayName),
@@ -264,7 +264,7 @@ class _CarHeader extends ConsumerWidget {
                       color: theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.add, color: theme.colorScheme.outline),
+                    child: Icon(Icons.add, color: theme.colorScheme.onSurfaceVariant),
                   ),
                   title: const Text('Add another car'),
                   onTap: () {
@@ -339,6 +339,8 @@ class _AlertBanner extends StatelessWidget {
                                       title,
                                       style: theme.textTheme.titleSmall
                                           ?.copyWith(fontWeight: FontWeight.w600),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                   const SizedBox(width: 6),
@@ -349,7 +351,7 @@ class _AlertBanner extends StatelessWidget {
                               Text(
                                 subtitle,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.outline,
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
@@ -359,7 +361,7 @@ class _AlertBanner extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Icon(Icons.chevron_right,
-                            size: 20, color: theme.colorScheme.outline),
+                            size: 20, color: theme.colorScheme.onSurfaceVariant),
                       ],
                     ),
                   ),
@@ -523,7 +525,7 @@ class _PredictCardShell extends StatelessWidget {
           child: Row(
             children: [
               Icon(Icons.local_gas_station_outlined,
-                  size: 40, color: theme.colorScheme.outline),
+                  size: 40, color: theme.colorScheme.onSurfaceVariant),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -1084,7 +1086,7 @@ class _ExplainRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: theme.colorScheme.outline),
+          Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: 12),
           Expanded(
             child: Text(label, style: theme.textTheme.bodyMedium),
@@ -1153,7 +1155,7 @@ class _ActionTile extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = context.tokens;
     final enabled = onTap != null;
-    final fg = enabled ? theme.colorScheme.onSurface : theme.colorScheme.outline;
+    final fg = enabled ? theme.colorScheme.onSurface : theme.colorScheme.onSurfaceVariant;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -1174,13 +1176,23 @@ class _ActionTile extends StatelessWidget {
                 child: Icon(icon, size: 22, color: tokens.accent),
               ),
               const SizedBox(height: 10),
-              Text(
-                label,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: fg,
-                  fontWeight: FontWeight.w500,
+              // Scale a long single-word label (e.g. "Maintenance") down to fit
+              // the tile width on one line instead of breaking it mid-word.
+              SizedBox(
+                width: double.infinity,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: fg,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -1201,7 +1213,7 @@ class _NoCarsState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 60),
       children: [
         Icon(Icons.directions_car_filled_outlined,
-            size: 80, color: theme.colorScheme.outline),
+            size: 80, color: theme.colorScheme.onSurfaceVariant),
         const SizedBox(height: 16),
         Text(
           name == null ? 'Welcome' : 'Welcome, $name',

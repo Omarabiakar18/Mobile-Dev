@@ -25,9 +25,15 @@ class AddFuelScreen extends ConsumerStatefulWidget {
     required this.carId,
     this.ocrPrefill,
     this.existing,
+    this.stationPrefill,
   });
 
   final String carId;
+
+  /// Optional station name to seed the Station field — used by the live
+  /// geofence-detection flow when an arrival is detected, so the fuel form
+  /// opens pre-filled with the station you arrived at.
+  final String? stationPrefill;
 
   /// Optional OCR-extracted fields. When non-null, the form initializes its
   /// controllers from this payload and visually flags low-confidence values
@@ -72,6 +78,9 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
       _applyExisting(widget.existing!);
     } else {
       _applyOcrPrefill();
+      if (widget.stationPrefill != null && widget.stationPrefill!.isNotEmpty) {
+        _station.text = widget.stationPrefill!;
+      }
     }
   }
 
@@ -578,10 +587,10 @@ class _ReceiptThumbnail extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.image_not_supported_outlined,
-                      color: theme.colorScheme.outline),
+                      color: theme.colorScheme.onSurfaceVariant),
                   const SizedBox(width: 8),
                   Text('Receipt preview unavailable',
-                      style: TextStyle(color: theme.colorScheme.outline)),
+                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
                 ],
               ),
             ),

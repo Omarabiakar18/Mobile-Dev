@@ -223,7 +223,7 @@ class _AddReminderScreenState extends ConsumerState<AddReminderScreen> {
                 Text(
                   'Set at least one — km, months, or both.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                 ),
                 // Live km-vs-calendar conflict banner. Re-evaluates whenever

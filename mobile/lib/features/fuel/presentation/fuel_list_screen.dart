@@ -141,7 +141,7 @@ class _FuelCard extends StatelessWidget {
                                 ? entry.station!
                                 : '${entry.fuelType.name} · ${NumberFormat.decimalPattern('en_US').format(entry.odometer)} km',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.outline,
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -149,7 +149,7 @@ class _FuelCard extends StatelessWidget {
                         Text(
                           '\$${entry.totalCost.toStringAsFixed(2)}',
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.outline,
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -178,7 +178,7 @@ class _EmptyState extends StatelessWidget {
         Icon(
           Icons.local_gas_station_outlined,
           size: 80,
-          color: theme.colorScheme.outline,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
         const SizedBox(height: 16),
         Text(
