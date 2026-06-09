@@ -240,7 +240,21 @@ class _GeofenceLiveScreenState extends ConsumerState<GeofenceLiveScreen> {
       final p = lerpLatLng(
           originLat, originLng, target.latitude, target.longitude, frac);
       _onPosition(p.lat, p.lng, 5, fromGps: false);
-      if (i >= steps) t.cancel();
+      if (i >= steps) {
+        t.cancel();
+        // Hand control back to real GPS so the position isn't frozen at the
+        // target forever after the drive finishes (the arrival + notification
+        // already fired on the final inside-radius step above). Without this,
+        // `_simulating` stayed true and the live-GPS listener kept ignoring
+        // real position updates.
+        if (mounted) {
+          setState(() {
+            _simulating = false;
+            _simTarget = null;
+            _statusNote = null;
+          });
+        }
+      }
     });
   }
 
