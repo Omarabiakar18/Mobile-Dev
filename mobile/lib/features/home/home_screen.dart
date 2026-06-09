@@ -1,9 +1,11 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/api/base_url.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/ui/connecting_state.dart';
 import '../../core/ui/status_chip.dart';
@@ -142,17 +144,12 @@ class _CarHeader extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
           child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: tokens.accent.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  Icons.directions_car_filled,
-                  color: tokens.accent,
-                ),
+              _CarAvatar(
+                car: car,
+                size: 48,
+                radius: 14,
+                background: tokens.accent.withValues(alpha: 0.18),
+                iconColor: tokens.accent,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -222,21 +219,16 @@ class _CarHeader extends ConsumerWidget {
                       final c = allCars[i];
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: c.id == car.id
-                                ? tokens.accent.withValues(alpha: 0.20)
-                                : theme.colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.directions_car_filled,
-                            color: c.id == car.id
-                                ? tokens.accent
-                                : theme.colorScheme.onSurfaceVariant,
-                          ),
+                        leading: _CarAvatar(
+                          car: c,
+                          size: 40,
+                          radius: 12,
+                          background: c.id == car.id
+                              ? tokens.accent.withValues(alpha: 0.20)
+                              : theme.colorScheme.surfaceContainerHighest,
+                          iconColor: c.id == car.id
+                              ? tokens.accent
+                              : theme.colorScheme.onSurfaceVariant,
                         ),
                         title: Text(c.displayName),
                         subtitle: Text(
@@ -277,6 +269,64 @@ class _CarHeader extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Rounded car thumbnail used by the dashboard header and the car switcher.
+/// Renders the car's uploaded photo when available, otherwise falls back to
+/// the generic car icon. A broken or slow image also falls back to the icon
+/// so the box never renders empty.
+class _CarAvatar extends StatelessWidget {
+  const _CarAvatar({
+    required this.car,
+    required this.size,
+    required this.radius,
+    required this.background,
+    required this.iconColor,
+  });
+
+  final Car car;
+  final double size;
+  final double radius;
+  final Color background;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = car.photoUrl;
+    final fullUrl = (photoUrl == null || photoUrl.isEmpty)
+        ? null
+        : (photoUrl.startsWith('http') ? photoUrl : '$apiBaseUrl$photoUrl');
+
+    final fallback = _fallback();
+    if (fullUrl == null) return fallback;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: CachedNetworkImage(
+        imageUrl: fullUrl,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        placeholder: (_, _) => fallback,
+        errorWidget: (_, _, _) => fallback,
+      ),
+    );
+  }
+
+  Widget _fallback() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: Icon(
+        Icons.directions_car_filled,
+        color: iconColor,
+      ),
     );
   }
 }

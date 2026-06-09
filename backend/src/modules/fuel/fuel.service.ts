@@ -45,7 +45,7 @@ export async function getOne(userId: string, fuelId: string) {
 }
 
 export async function create(userId: string, carId: string, input: CreateFuelInput) {
-  await assertOwnsCar(userId, carId);
+  const car = await assertOwnsCar(userId, carId);
   // Wrap insert + avgKmPerDay recompute in a single tx so the cached value on
   // Car never lags the underlying entries (spec §6.2).
   return prisma.$transaction(async (tx) => {
@@ -66,6 +66,12 @@ export async function create(userId: string, carId: string, input: CreateFuelInp
         receiptPhotoUrl: input.receiptPhotoUrl ?? null,
       },
     });
+    // Advance the cached odometer so the dashboard reflects the latest reading.
+    // Forward-only: a historical fill-up with a lower odometer must never roll
+    // Car.currentKm back to an earlier value.
+    if (input.odometer > car.currentKm) {
+      await tx.car.update({ where: { id: carId }, data: { currentKm: input.odometer } });
+    }
     await recomputeAvgKmPerDay(carId, tx);
     return entry;
   });

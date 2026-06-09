@@ -141,7 +141,7 @@ export async function create(
   carId: string,
   input: CreateMaintenanceInput,
 ): Promise<CreateMaintenanceResult> {
-  await assertOwnsCar(userId, carId);
+  const car = await assertOwnsCar(userId, carId);
 
   const entryDate = new Date(input.date);
 
@@ -158,6 +158,13 @@ export async function create(
       },
       include: { photos: true },
     });
+
+    // Advance the cached odometer so the dashboard reflects the latest reading.
+    // Forward-only: a historical maintenance entry with a lower km must never
+    // roll Car.currentKm back to an earlier value.
+    if (input.km > car.currentKm) {
+      await tx.car.update({ where: { id: carId }, data: { currentKm: input.km } });
+    }
 
     const updatedReminderIds = await bumpMatchingReminders(tx, {
       carId,

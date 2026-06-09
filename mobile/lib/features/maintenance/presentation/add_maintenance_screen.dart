@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/ui/feedback.dart';
+import '../../cars/data/cars_api.dart';
 import '../../reminders/data/reminders_api.dart';
 import '../data/maintenance_api.dart';
 import '../data/maintenance_model.dart';
@@ -114,6 +115,7 @@ class _AddMaintenanceScreenState extends ConsumerState<AddMaintenanceScreen> {
       }
 
       ref.invalidate(maintenanceListProvider(widget.carId));
+      ref.invalidate(carsListProvider);
 
       // Cross-update side effect (Alaa's #3): when the backend bumped one or
       // more reminders, invalidate BOTH the full reminders list AND the

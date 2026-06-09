@@ -192,6 +192,7 @@ class _AddFuelScreenState extends ConsumerState<AddFuelScreen> {
             );
       }
       ref.invalidate(fuelListProvider(widget.carId));
+      ref.invalidate(carsListProvider);
       if (mounted) {
         showFeedback(
           context,
