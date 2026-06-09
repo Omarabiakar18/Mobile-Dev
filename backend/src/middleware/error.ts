@@ -64,6 +64,22 @@ export const errorHandler: ErrorRequestHandler = (
     return;
   }
 
+  // Errors raised by `express.static`/`serve-static` (e.g. a missing upload
+  // with `fallthrough: false`) are `http-errors` instances, not our own
+  // HttpError. They carry a numeric `status`/`statusCode` — honor it so a
+  // missing file returns a clean 404 instead of a misleading 500.
+  const httpStatus = (err as { status?: unknown; statusCode?: unknown })?.status
+    ?? (err as { statusCode?: unknown })?.statusCode;
+  if (typeof httpStatus === 'number' && httpStatus >= 400 && httpStatus < 500) {
+    res.status(httpStatus).json({
+      error: {
+        code: httpStatus === 404 ? 'NOT_FOUND' : 'BAD_REQUEST',
+        message: httpStatus === 404 ? 'File not found' : 'Bad request',
+      },
+    });
+    return;
+  }
+
   logger.error({ err }, 'Unhandled error');
   res.status(500).json({
     error: {

@@ -19,10 +19,15 @@
  *     mécanique expiring in 11 days (red banner)
  *   - 10 gas stations near Beirut (Phase 5)
  */
+import { promises as fs } from 'fs';
+import path from 'path';
+
 import { PrismaClient, Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
+import { env } from '../src/config/env';
 import { recomputeAvgKmPerDay } from '../src/lib/avg-km-per-day';
+import { buildDemoPdf } from './demo-pdf';
 
 const prisma = new PrismaClient();
 
@@ -283,10 +288,26 @@ async function seedReminders(carId: string): Promise<number> {
 // ---------------------------------------------------------------------------
 
 const PRIMARY_DOCUMENTS = [
-  { type: 'insurance',    daysToExpiry: 165, issuer: 'Bankers Assurance' },
-  { type: 'registration', daysToExpiry: 220, issuer: 'NTVB Lebanon' },
-  { type: 'mecanique',    daysToExpiry: 11,  issuer: 'NTVB Lebanon' }, // <-- red banner trigger
+  { type: 'insurance',    daysToExpiry: 165, issuer: 'Bankers Assurance', label: 'Insurance' },
+  { type: 'registration', daysToExpiry: 220, issuer: 'NTVB Lebanon',      label: 'Registration' },
+  { type: 'mecanique',    daysToExpiry: 11,  issuer: 'NTVB Lebanon',      label: 'Mecanique' }, // <-- red banner trigger
 ] as const;
+
+/**
+ * Materialize the stub PDF blobs the seeded documents point at. The mobile
+ * "Open file" button launches `/uploads/demo/<type>.pdf`, so these files must
+ * exist on disk — otherwise express.static returns a 404 that the error
+ * handler surfaces as "Internal server error". We synthesize a tiny valid PDF
+ * per type rather than committing binaries to git.
+ */
+async function writeDemoDocAssets(): Promise<void> {
+  const dir = path.resolve(env.UPLOADS_DIR, 'demo');
+  await fs.mkdir(dir, { recursive: true });
+  for (const d of PRIMARY_DOCUMENTS) {
+    const pdf = buildDemoPdf(`Garage Demo - ${d.label}`, `Issued by ${d.issuer}`);
+    await fs.writeFile(path.join(dir, `${d.type}.pdf`), pdf);
+  }
+}
 
 async function seedDocuments(carId: string): Promise<number> {
   await prisma.document.deleteMany({ where: { carId } });
@@ -297,7 +318,8 @@ async function seedDocuments(carId: string): Promise<number> {
         carId,
         type: d.type as Prisma.DocumentCreateInput['type'],
         expiryDate: new Date(now + d.daysToExpiry * 86_400_000),
-        // No actual file blob — fileUrl points to a stub. Demo never opens it.
+        // Points at a stub blob materialized by writeDemoDocAssets() so the
+        // mobile "Open file" button renders a real (placeholder) PDF.
         fileUrl: `/uploads/demo/${d.type}.pdf`,
         issuer: d.issuer,
       },
@@ -336,6 +358,9 @@ async function main() {
 
   const docCount = await seedDocuments(primary);
   console.log(`Seeded ${docCount} documents on primary`);
+
+  await writeDemoDocAssets();
+  console.log(`Wrote ${PRIMARY_DOCUMENTS.length} demo document PDFs to uploads/demo/`);
 
   console.log('\nDemo data ready.');
   console.log(`  email:    ${DEMO_USER.email}`);
